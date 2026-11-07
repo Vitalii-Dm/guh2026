@@ -1,0 +1,9 @@
+.DS_Store
+__pycache__/
+*.pyc
+node_modules/
+nca/*.pt
+nca/train.log
+# Google's self-organising-systems clone (125 MB) — re-clone it, see README
+vendor/
+nca/.venv/

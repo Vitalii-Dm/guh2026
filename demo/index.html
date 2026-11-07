@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Swarm Hub Recovery</title>
+<style>
+  :root {
+    --bg: #0b0f14; --panel: #121821; --line: #223042; --text: #e6edf3; --muted: #8b9bb0;
+    --accent: #2bb3a8; --hub: #f2c14e; --warn: #f29e4c; --bad: #e5534b; --good: #3fb950;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 -apple-system, "Segoe UI", Inter, Helvetica, Arial, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 17px; margin: 0; font-weight: 650; }
+  h1 small { color: var(--muted); font-weight: 400; margin-left: 8px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button, .seg label { background: #1a2330; color: var(--text); border: 1px solid var(--line); border-radius: 7px; padding: 7px 12px; font: inherit; cursor: pointer; }
+  button:hover, .seg label:hover { border-color: #3a4d66; }
+  button.danger { border-color: #5a2a2a; background: #2a1616; }
+  .seg { display: inline-flex; }
+  .seg input { display: none; }
+  .seg label { border-radius: 0; margin-left: -1px; }
+  .seg label:first-of-type { border-radius: 7px 0 0 7px; }
+  .seg label:last-of-type { border-radius: 0 7px 7px 0; }
+  .seg input:checked + label { background: var(--accent); color: #041311; border-color: var(--accent); font-weight: 600; }
+  .range { display: flex; gap: 6px; align-items: center; color: var(--muted); }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 16px 20px; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  .left { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .map { align-self: stretch; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; position: relative; }
+  #map { display: block; width: 100%; height: auto; cursor: crosshair; touch-action: none; }
+  .hint { position: absolute; left: 12px; bottom: 10px; color: var(--muted); font-size: 12px; pointer-events: none; }
+  aside { display: flex; flex-direction: column; gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+  .stat .v { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .stat .k { color: var(--muted); font-size: 12px; }
+  .big { grid-column: span 2; display: flex; align-items: baseline; justify-content: space-between; padding: 8px 10px; border-radius: 8px; background: #0f2416; border: 1px solid #1f4a2c; }
+  .big.bad { background: #2a1414; border-color: #5a2a2a; }
+  .big .v { font-size: 28px; color: var(--good); }
+  .big.bad .v { color: var(--bad); }
+  #hubline { font-variant-numeric: tabular-nums; }
+  #hubline .suspect { color: var(--warn); }
+  #log { list-style: none; margin: 0; padding: 0; font-size: 12.5px; max-height: 170px; overflow: auto; }
+  #log li { padding: 3px 0; border-bottom: 1px dashed #1c2735; color: #c5d1de; }
+  #log li .t { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 6px; }
+  #nca { width: 100%; aspect-ratio: 1; image-rendering: pixelated; border-radius: 8px; background: #11161e; cursor: crosshair; display: block; }
+  .nca-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; color: var(--muted); font-size: 12px; }
+  .intro { margin: 0; padding: 10px 20px 0; color: var(--muted); }
+  .muted { color: var(--muted); font-size: 12.5px; margin: 0 0 8px; }
+  button.on { background: var(--accent); color: #041311; border-color: var(--accent); font-weight: 600; }
+  .modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; color: var(--muted); font-size: 11.5px; }
+  .modes div { border-left: 3px solid var(--c); padding-left: 7px; }
+  .modes b { display: block; color: var(--text); font-size: 18px; font-variant-numeric: tabular-nums; }
+  .kcard { position: absolute; left: 10px; top: 10px; width: 196px; padding: 8px 10px; background: rgba(11,15,20,0.84); border: 1px solid var(--line); border-radius: 9px; }
+  .kcard h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 4px; font-weight: 600; }
+  .kgrid { border-collapse: separate; border-spacing: 2px; font-size: 10.5px; width: 100%; table-layout: fixed; }
+  .kgrid th { color: var(--muted); font-weight: 600; text-align: center; }
+  .kgrid th[scope=row] { text-align: left; width: 34px; }
+  .kgrid td { height: 13px; text-align: center; line-height: 1; background: #1a2330; border-radius: 3px; font-size: 9px; color: #0b0f14; }
+  .kgrid td.known { background: #ff7a59; }
+  .kgrid td.sent { background: var(--good); font-weight: 700; }
+  .kgrid tr[data-id] { cursor: pointer; }
+  .kgrid tr[data-id]:hover th { color: var(--text); }
+  .kgrid tr.on th { color: #fff; }
+  .kgrid tr.on td { outline: 1px solid #fff; }
+  .kgrid tr.down { opacity: 0.35; cursor: default; text-decoration: line-through; }
+  .kgrid tr.base th { color: var(--text); }
+  .view-banner { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); padding: 5px 11px; background: rgba(11,15,20,0.9); border: 1px solid #fff; border-radius: 7px; font-size: 12px; white-space: nowrap; pointer-events: none; }
+  .facts { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0 0 8px; font-size: 12.5px; }
+  .facts dt { color: var(--muted); }
+  .facts dd { margin: 0; }
+  .reports { list-style: none; margin: 0 0 8px; padding: 0; font-size: 12px; color: #c5d1de; }
+  .dbuttons { display: flex; gap: 8px; }
+  @media (max-width: 700px) { .kcard, .gcard { position: static; width: auto; margin: 8px; } .view-banner { white-space: normal; width: 80%; } }
+  .gcard { position: absolute; right: 10px; top: 10px; width: min(330px, 45%); padding: 8px 10px; background: rgba(11,15,20,0.84); border: 1px solid var(--line); border-radius: 9px; }
+  .gcard h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 4px; font-weight: 600; }
+  .gnote { margin: 2px 0 0; color: var(--muted); font-size: 11px; }
+  .glegend { list-style: none; margin: 0 0 4px; padding: 0; display: grid; gap: 1px; font-size: 11.5px; color: var(--muted); }
+  .glegend li { display: flex; align-items: center; gap: 8px; }
+  .glegend b { margin-left: auto; color: var(--text); font-variant-numeric: tabular-nums; }
+  .gwrap { position: relative; }
+  #graph { display: block; width: 100%; height: 105px; }
+  .gtip { position: absolute; top: 8px; background: #0b0f14; border: 1px solid var(--line); border-radius: 7px; padding: 6px 9px; font-size: 12px; pointer-events: none; white-space: nowrap; }
+  .gtip .k { color: var(--muted); }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; color: var(--muted); font-size: 12px; }
+  .legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; background: var(--c); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Swarm hub recovery <small>fail any drone — the swarm keeps going</small></h1>
+  <div class="controls">
+    <div class="seg" role="radiogroup" aria-label="Mode">
+      <input type="radio" name="mode" id="m-search" value="search" checked><label for="m-search" title="Drones search for missing people">Search</label>
+      <input type="radio" name="mode" id="m-form" value="formation"><label for="m-form" title="Stop searching and hold a V, with ridges switched off; the graph's reference runs keep searching">Formation</label>
+    </div>
+    <button id="failHub" class="danger">Fail the hub</button>
+    <button id="failRandom" class="danger">Fail a random drone</button>
+    <button id="paint">Paint blackout</button>
+    <button id="clearBlackout">Clear blackout</button>
+    <button id="cutRadio">Cut all radio</button>
+    <button id="reset">Reset</button>
+    <button id="newTerrain">New terrain <span id="seedV" style="color:var(--muted)"></span></button>
+    <label class="range" title="Changing this restarts the run">Drones <input id="drones" type="range" min="3" max="15" value="9"> <span id="dronesV">9</span></label>
+    <label class="range">Radio range (px) <input id="range" type="range" min="40" max="320" value="190"> <span id="rangeV">190</span></label>
+    <label class="range"><input id="los" type="checkbox" checked> Ridges block radio</label>
+  </div>
+</header>
+<p class="intro"><span id="introDrones">9</span> drones search the mountains for 7 missing people, with no central control. The hub is the coordinator most swarms depend on; here nothing does, so failing it barely shows. Click any drone to see what it alone knows. Try failing the hub, then paint a radio blackout or cut all radio and watch the graph: searching carries on, and base catches up once radio returns.</p>
+<main>
+  <div class="left">
+    <section class="map">
+      <canvas id="map" width="880" height="600"></canvas>
+      <div class="hint" id="hint">Click a drone to see what it knows</div>
+      <div class="view-banner" id="viewBanner" hidden></div>
+      <div class="kcard">
+        <h2>Who knows what</h2>
+        <table class="kgrid" id="knowGrid" aria-label="Which drones know about which people. Columns are people."></table>
+        <p class="gnote" id="agreement"></p>
+        <p class="gnote">Columns are people. ● knows · ✓ knows it reached base. Click a row.</p>
+      </div>
+      <div class="gcard">
+        <h2>Search progress</h2>
+        <ul class="glegend" id="graphLegend"></ul>
+        <div class="gwrap"><canvas id="graph"></canvas><div class="gtip" id="graphTip" hidden></div></div>
+        <p class="gnote">Dashed lines: separate unseen runs on the same terrain</p>
+      </div>
+    </section>
+    <div class="legend">
+      <span style="--c: var(--hub)">hub</span>
+      <span style="--c: var(--warn)">hub suspect (?)</span>
+      <span style="--c: rgba(255,255,255,0.35)">missing person</span>
+      <span style="--c: #ff7a59">found, SOS</span>
+      <span style="--c: var(--good)">reported to base</span>
+      <span style="--c: rgba(120,24,36,0.9)">radio blackout</span>
+      <span style="--c: rgba(110,215,255,0.95)">radio link</span>
+      <span style="--c: rgba(229,83,75,0.6)">dashed: ridge in the way</span>
+      <span style="--c: var(--bad)">red X: failed drone</span>
+      <span style="--c: transparent">dark: unsearched · ring colour: comms mode · dotted lines: home strips</span>
+    </div>
+  </div>
+  <aside>
+    <div class="card" id="droneCard" hidden>
+      <h2 id="droneTitle"></h2>
+      <dl class="facts" id="droneFacts"></dl>
+      <ul class="reports" id="droneReports"></ul>
+      <div class="dbuttons"><button id="failSelected" class="danger">Fail this drone</button><button id="closeView">Back to full view</button></div>
+    </div>
+    <div class="card">
+      <h2>Swarm</h2>
+      <div class="stats">
+        <div class="big" id="lostBox"><div><div class="k">Reports at base, of people found</div></div><div class="v" id="delivered">0/0</div></div>
+        <div class="stat"><div class="v" id="cov">0%</div><div class="k">Area searched</div></div>
+        <div class="stat"><div class="v" id="covBase">0%</div><div class="k">Area known at base</div></div>
+        <div class="stat"><div class="v" id="found">0/0</div><div class="k">People found</div></div>
+        <div class="stat"><div class="v" id="lost">0</div><div class="k">Reports lost</div></div>
+        <div class="stat" style="grid-column: span 2"><div id="hubline">Hub: —</div><div class="k">Live drones: <span id="live">0</span></div></div>
+        <div class="k" style="grid-column: span 2">Drones by what they can hear</div>
+        <div class="modes" style="grid-column: span 2">
+          <div style="--c: #2bb3a8"><b id="mode-hub">0</b>hub reachable</div>
+          <div style="--c: var(--warn)"><b id="mode-neighbours">0</b>neighbours only</div>
+          <div style="--c: var(--bad)"><b id="mode-alone">0</b>fully cut off</div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>What each drone's tiny learned rule does</h2>
+      <p class="muted">A neural cellular automaton trained like the self-repairing gecko, on our V formation. Every pixel only sees its neighbours. Fail a drone, or click here, and the shape regrows.</p>
+      <canvas id="nca" width="320" height="320"></canvas>
+      <div class="nca-meta"><span id="ncaSim">loading model…</span><button id="ncaReset">Regrow from one cell</button></div>
+    </div>
+    <div class="card">
+      <h2>Events</h2>
+      <ul id="log"></ul>
+    </div>
+  </aside>
+</main>
+<script type="module" src="./demo.js"></script>
+</body>
+</html>

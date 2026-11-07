@@ -1,0 +1,9 @@
+{
+  "name": "guh2026-swarm",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test recovery/test/*.test.mjs demo/test/*.test.mjs",
+    "demo": "python3 -m http.server 8080"
+  }
+}
