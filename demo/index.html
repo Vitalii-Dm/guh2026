@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Swarm Hub Recovery</title>
+<script type="importmap">{ "imports": { "three": "../demo3d/vendor/three/three.module.min.js", "three/addons/": "../demo3d/vendor/three/addons/" } }</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
@@ -56,6 +57,17 @@
   /* the map as large as the window allows, without scrolling to see all of it */
   .map { display: flex; justify-content: center; }
   #map { display: block; width: min(100%, calc((100svh - var(--bar, 110px) - 22px) * 880 / 600)); height: auto; aspect-ratio: 880 / 600; border: 1px solid var(--rule); cursor: crosshair; touch-action: none; }
+  #map[hidden] { display: none; }
+  /* 3D view: fills the same space as the map */
+  #view3d { position: relative; width: 100%; height: calc(100svh - var(--bar, 110px) - 22px); min-height: 420px; border: 1px solid var(--rule); overflow: hidden; }
+  #view3d[hidden] { display: none; }
+  #view3d canvas { display: block; touch-action: none; }
+  .labels { position: absolute; inset: 0; pointer-events: none; }
+  .tag, .ptag, .flash { font: 600 12px/1.2 var(--text); color: var(--ink); text-align: center; white-space: nowrap; text-shadow: 0 0 3px #000, 0 1px 2px #000; }
+  .tag .hub { color: var(--hub); } .tag .sus { color: var(--warn); } .tag .mule { color: #ff7a59; } .tag .dead { color: #ff8c82; } .tag .phone { color: #fff; font-weight: 700; }
+  .tag.base { font-weight: 700; }
+  .ptag b.sos { color: #ff7a59; } .ptag b.ok { color: var(--good); }
+  .flash { font-weight: 700; font-size: 13px; }
 
   /* overlays on the map: opaque sheets pinned to the corners */
   .panels { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; }
@@ -147,8 +159,10 @@
         <input type="radio" name="mode" id="m-form" value="formation"><label for="m-form" title="Stop searching and hold a V, with ridges switched off; the graph's reference runs keep searching">Formation</label>
       </div>
       <button id="reset">Reset</button>
+      <button id="viewBtn">3D view</button>
+      <button id="resetView" hidden>Reset view</button>
       <button id="newTerrain">New terrain <span id="seedV" style="color:var(--pencil)"></span></button>
-      <label class="range">Speed <input id="speed" type="range" min="0" max="4" step="1" value="2" aria-valuetext="1 times"> <span id="speedV">1×</span></label>
+      <label class="range">Speed <input id="speed" type="range" min="0" max="4" step="1" value="3" aria-valuetext="2 times"> <span id="speedV">2×</span></label>
       <label class="range" title="Changing this restarts the run">Drones <input id="drones" type="range" min="3" max="15" value="9"> <span id="dronesV">9</span></label>
     </div>
     <div class="group" role="group" aria-labelledby="g-break">
@@ -170,6 +184,7 @@
   <div class="left">
     <section class="map">
       <canvas id="map" width="880" height="600"></canvas>
+      <div id="view3d" hidden></div>
     </section>
     <div class="panels">
       <section class="panel">
@@ -187,9 +202,11 @@
   <aside>
     <section id="phonesCard" hidden>
       <h2>Phones</h2>
-      <img class="qr" id="qr" alt="QR code that opens the phone page" hidden>
-      <div class="k">Scan with an iPhone on the same Wi-Fi, or open:</div>
-      <p class="join"><a id="joinUrl"></a></p>
+      <div id="joinBox">
+        <img class="qr" id="qr" alt="QR code that opens the phone page" hidden>
+        <div class="k">Scan with an iPhone on the same Wi-Fi, or open:</div>
+        <p class="join"><a id="joinUrl"></a></p>
+      </div>
       <div class="k" id="phoneList">Starting…</div>
       <button id="launch" class="launch" disabled>Launch</button>
     </section>

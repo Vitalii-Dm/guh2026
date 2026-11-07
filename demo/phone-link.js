@@ -1,9 +1,8 @@
 // phone-link.js — the big screen's side of phone mode. It starts the mission,
 // keeps the laptop's drones on the same clock as the phones, and carries
 // messages between the simulation and the phones.
-import { DT } from './drone.js';
 import { createNet } from './net.js';
-import { LAPTOP_ID, droneOf, measureClock, netId } from './mission.js';
+import { LAPTOP_ID, droneOf, measureClock, netId, stepsAt } from './mission.js';
 
 const MISSION_POLL_MS = 1000;
 
@@ -63,6 +62,12 @@ export function createPhoneLink({ seed, fleet, onUpdate, onError }) {
       update();
     },
 
+    /** Change the mission's speed for every device (see RATES in mission.js). */
+    async setSpeed(rate) {
+      mission = await postJson('/speed', { rate });
+      update();
+    },
+
     /** Use this sim from now on. Any phone not linked yet starts out of contact. */
     attach(sim) {
       world = sim;
@@ -71,9 +76,9 @@ export function createPhoneLink({ seed, fleet, onUpdate, onError }) {
 
     /** How many motion steps the mission should have run by now, or null before launch. */
     targetSteps() {
-      if (mission?.launchAt == null) return null;
-      const elapsed = Date.now() + offset - mission.launchAt;
-      return elapsed < 0 ? 0 : Math.floor(elapsed / (DT * 1000)) + 1;
+      if (!mission?.clock) return null;
+      const t = Date.now() + offset;
+      return t < mission.launchAt ? 0 : Math.floor(stepsAt(mission.clock, t)) + 1;
     },
 
     /** Call once per tick: send each phone what it can hear, and any changed settings. */

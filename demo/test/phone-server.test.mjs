@@ -136,3 +136,23 @@ test('only the public folders are served', () => withHelper(async (base) => {
     assert.equal((await fetch(base + path)).status, 404, path);
   }
 }));
+
+test('speed is shared: a change is scheduled ahead and the mission clock never jumps', async () => {
+  const { stepsAt, DEFAULT_RATE, SPEED_CHANGE_MS } = await import('../mission.js');
+  let time = 1000;
+  await withHelper(async (base) => {
+    await postJson(base, '/mission', { seed: 1 });
+    assert.equal((await postJson(base, '/speed', { rate: 3 })).error, 'bad rate');
+    const launched = await postJson(base, '/launch');
+    assert.equal(launched.clock.rate, DEFAULT_RATE);
+    time = launched.launchAt + 10000;                       // 10 s into the mission
+    const before = stepsAt(launched.clock, time);
+    const changed = (await postJson(base, '/speed', { rate: 0.5 })).clock;
+    // every device still agrees on now, and on the moment the change lands
+    assert.ok(Math.abs(stepsAt(changed, time) - before) < 1e-9);
+    assert.ok(Math.abs(stepsAt(changed, time + SPEED_CHANGE_MS) - stepsAt(launched.clock, time + SPEED_CHANGE_MS)) < 1e-9);
+    // after it, the clock runs at the new rate
+    const a = stepsAt(changed, time + SPEED_CHANGE_MS), b = stepsAt(changed, time + SPEED_CHANGE_MS + 1000);
+    assert.ok(Math.abs((b - a) - 0.5 * (1000 / 16)) < 1e-6);
+  }, { now: () => time });
+});

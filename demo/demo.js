@@ -5,13 +5,14 @@ import { NCA } from '../recovery/nca-runtime.js';
 import { makeTerrain } from './terrain.js';
 import { createMessages } from './messages.js';
 import { W, H, CELL, COLS, ROWS, N_DRONES, N_SURVIVORS, SENSE, BASE, DT, TICK_STEPS, createSim } from './sim.js';
-import { PHONE_SPEED } from './mission.js';
+import { PHONE_SPEED, RATES, DEFAULT_RATE } from './mission.js';
 import { createPhoneLink } from './phone-link.js';
 
 const msgs = createMessages();
 
 const canvas = document.getElementById('map');
 const ctx = canvas.getContext('2d');
+const MAP_CTX = ctx;              // the 2D map; the 3D view draws its ground markings elsewhere
 const BRUSH = 60;               // blackout brush radius, px
 const SAMPLE_TICKS = 4;         // ticks between graph samples
 const SECONDS_PER_TICK = 0.16;
@@ -47,6 +48,7 @@ function reset() {
   const phoneOptions = phoneMode ? { speed: PHONE_SPEED, remoteIds: link?.claimed() ?? [] } : {};
   world = createSim({ seed: terrainSeed, terrain, drones, range, los, onLog: log, ...phoneOptions });
   world.mode = mode;
+  terrainFor3d();
   // The comparison runs can't include a phone, so phone mode leaves them out.
   reference = phoneMode ? null : {
     on: createSim({ seed: terrainSeed, terrain, drones, range, los }),
@@ -94,6 +96,7 @@ function mapPoint(e) {
 function setPainting(on) {
   painting = on;
   $('paint').classList.toggle('on', on);
+  if (view) view.controls.enabled = !on;      // in 3D, dragging paints instead of turning the camera
 }
 
 function select(d) {
@@ -194,7 +197,7 @@ const paint = document.createElement('canvas');
 paint.width = COLS; paint.height = ROWS;
 const paintCtx = paint.getContext('2d');
 const paintImg = paintCtx.createImageData(COLS, ROWS);
-function drawWhoSearched(d) {
+function drawWhoSearched(d, ctx = MAP_CTX) {
   const px = paintImg.data, cache = new Map();
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
     const i = r * COLS + c, o = i * 4;
@@ -271,7 +274,7 @@ function drawPerson(x, y, color, pose) {
   ctx.stroke(); ctx.restore();
 }
 
-function draw() {
+function draw2D() {
   const now = performance.now();
   ctx.drawImage(world.terrain.canvas, 0, 0);
 
@@ -686,15 +689,168 @@ ncaCanvas.addEventListener('click', (e) => {
 });
 $('ncaReset').onclick = () => { if (nca) nca.reset(); ncaWatch = null; };
 
+// ---------------------------------------------------------------- 3D view
+// The same run drawn in 3D (../demo3d/scene.js, Three.js). Switching views
+// only changes what's drawn: the simulation, panels and phones carry on.
+// The 3D code loads the first time it's needed, so 2D-only use stays light.
+let view = null, view3d = false, loading3d = null;
+const GROUND_MS = 100;            // 3D ground markings: at most 10 redraws a second
+let groundAt = -Infinity, treeKey = '';
+
+function terrainFor3d() {
+  if (!view) return;
+  view.clear();
+  treeKey = '';
+  view.setTerrain(world.terrain, [...world.survivors.map((p) => ({ x: p.x, y: p.y })), { x: BASE.x, y: BASE.y, r: 52 }]);
+}
+
+async function setView(three) {
+  if (three && !view) {
+    $('view3d').hidden = false;   // visible first, so the scene gets a size
+    loading3d ??= import('../demo3d/scene.js').then(({ createScene3D }) => {
+      view = createScene3D($('view3d'), { W, H, BASE });
+      hook3dInput(view.dom);
+      view.controls.enabled = !painting;
+      terrainFor3d();
+    });
+    try { await loading3d; } catch (err) {
+      log(`3D view failed to load: ${err.message}`);
+      $('view3d').hidden = true;
+      loading3d = null;
+      return;
+    }
+  }
+  view3d = three;
+  canvas.hidden = three;
+  $('view3d').hidden = !three;
+  $('resetView').hidden = !three;
+  $('viewBtn').textContent = three ? '2D view' : '3D view';
+  groundAt = -Infinity; treeKey = '';
+  try { localStorage.setItem('swarm.view', three ? '3d' : '2d'); } catch {}
+}
+$('viewBtn').onclick = () => setView(!view3d);
+$('resetView').onclick = () => view?.resetView();
+
+function draw() {
+  if (!view3d || !view) { draw2D(); return; }
+  const now = performance.now();
+  if (now - groundAt >= GROUND_MS) {
+    groundAt = now;
+    drawGround3D(view.groundCanvas.getContext('2d'), now);
+    view.groundChanged();
+    // trees go dark with the ground under them: same fog, same view. Only
+    // recoloured when what's searched (or whose view it is) has changed.
+    const key = selected ? `${selected.id}:${R.visitedCount(selected.state)}` : `all:${world.truthVisited.size}`;
+    if (key !== treeKey) {
+      treeKey = key;
+      const dark = selected ? 0.22 : 0.45;
+      const lit = selected ? (c, r) => R.isVisited(selected.state, c, r) : (c, r) => world.truthVisited.has(`${c},${r}`);
+      view.shadeTrees((x, y) => (lit(Math.floor(x / CELL), Math.floor(y / CELL)) ? 1 : dark));
+    }
+  }
+  view.update(world, { selected, msgs, now, colour: droneRgb });
+  view.render();
+}
+
+/** Ground markings for the 3D view, drawn flat and draped over the terrain. */
+function drawGround3D(ctx, now) {
+  ctx.drawImage(world.terrain.canvas, 0, 0);
+  fogCtx.clearRect(0, 0, COLS, ROWS);
+  fogCtx.fillStyle = selected ? 'rgba(6,10,16,0.78)' : 'rgba(6,10,16,0.55)';
+  const searched = selected ? (c, r) => R.isVisited(selected.state, c, r) : (c, r) => world.truthVisited.has(`${c},${r}`);
+  for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) if (!searched(c, r)) fogCtx.fillRect(c, r, 1, 1);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(fog, 0, 0, W, H);
+  if (selected) drawWhoSearched(selected, ctx);
+  if (mode === 'search') {
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.setLineDash([3, 6]); ctx.lineWidth = 1.5;
+    for (const d of world.drones) {
+      const sec = R.homeSector(d.state, d.id, COLS);
+      if (sec[0] === 0) continue;
+      ctx.beginPath(); ctx.moveTo(sec[0] * CELL, 0); ctx.lineTo(sec[0] * CELL, H); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  } else {
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.setLineDash([6, 6]); ctx.lineWidth = 2;
+    ctx.beginPath();
+    R.FORMATION_POLYLINE.forEach(([x, y], i) => { const px = 40 + x * (W - 80), py = 20 + y * (H - 60); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+  ctx.fillStyle = 'rgba(150,24,40,0.5)';
+  for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) if (world.blackout[r * COLS + c]) ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
+  ctx.fillStyle = 'rgba(14,20,28,0.85)'; ctx.strokeStyle = '#f2f5f8'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(BASE.x, BASE.y - 4, 15, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#f2f5f8'; ctx.font = '800 14px system-ui'; ctx.textAlign = 'center'; ctx.fillText('H', BASE.x, BASE.y + 1);
+  const baseS = world.base.state.survivors;
+  for (const s of world.survivors) {
+    const report = selected?.state.survivors[s.id];
+    if (!s.foundBy || (selected && !report)) continue;
+    const ok = selected ? report.delivered : !!baseS[s.id];
+    const pulse = (now / 1200 + s.pose) % 1;
+    ctx.strokeStyle = ok ? 'rgba(63,185,80,0.9)' : `rgba(255,122,89,${1 - pulse})`; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(s.x, s.y, ok ? 13 : 8 + pulse * 18, 0, Math.PI * 2); ctx.stroke();
+  }
+  // failed drones: a red cross where they came down (live drones' footprints are drawn in 3D)
+  ctx.strokeStyle = 'rgba(229,83,75,0.9)'; ctx.lineWidth = 3;
+  for (const d of world.drones) {
+    if (d.alive) continue;
+    ctx.globalAlpha = selected ? 0.3 : 1;
+    ctx.beginPath(); ctx.moveTo(d.x - 9, d.y - 9); ctx.lineTo(d.x + 9, d.y + 9); ctx.moveTo(d.x + 9, d.y - 9); ctx.lineTo(d.x - 9, d.y + 9); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/** Clicks and blackout painting on the 3D view; a drag without paint turns the camera. */
+function hook3dInput(el) {
+  let downAt = null;
+  el.addEventListener('pointerdown', (e) => {
+    downAt = { x: e.clientX, y: e.clientY };
+    if (!painting) return;
+    const p = view.pick(e.clientX, e.clientY).point;
+    if (!p) return;
+    brushAt = p;
+    el.setPointerCapture(e.pointerId);
+    world.paintBlackout(p.x, p.y, BRUSH);
+    marks.push({ tick: world.tick, label: 'blackout' });
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (!brushAt) return;
+    const p = view.pick(e.clientX, e.clientY).point;
+    if (p) brushTo(p);
+  });
+  el.addEventListener('pointerup', (e) => {
+    const click = downAt && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) < 5;
+    downAt = null;
+    if (brushAt) { brushAt = null; return; }
+    if (painting || !click) return;
+    const { droneId, point } = view.pick(e.clientX, e.clientY);
+    let best = droneId !== null ? world.drones.find((d) => d.id === droneId) : null;
+    if (!best && point) {
+      let bd = 22;
+      for (const d of world.drones) {
+        const dd = Math.hypot(d.x - point.x, d.y - point.y);
+        if (d.alive && dd < bd) { best = d; bd = dd; }
+      }
+    }
+    select(best);
+  });
+}
+
 // ---------------------------------------------------------------- loop
 // Speed slider: runs more or fewer fixed sim steps per second, so a run
 // plays out the same at any speed, just faster or slower.
-const SPEEDS = [0.25, 0.5, 1, 2, 4];
-let simSpeed = 1;
+// In phone mode the rate goes to the helper, which shares it with every phone.
+let simSpeed = DEFAULT_RATE;
+function showSpeed(rate) {
+  $('speed').value = RATES.indexOf(rate);
+  $('speedV').textContent = `${rate}×`;
+  $('speed').setAttribute('aria-valuetext', `${rate} times`);
+}
+showSpeed(simSpeed);
 $('speed').oninput = (e) => {
-  simSpeed = SPEEDS[+e.target.value];
-  $('speedV').textContent = `${simSpeed}×`;
-  e.target.setAttribute('aria-valuetext', `${simSpeed} times`);
+  simSpeed = RATES[+e.target.value];
+  showSpeed(simSpeed);
+  if (phoneMode) link?.setSpeed(simSpeed).catch(() => log('Couldn\'t change the speed: the phone helper isn\'t answering'));
 };
 // Work budget. The simulation keeps to real time; everything drawn runs only
 // as often as it needs to, and not at all while it's off screen.
@@ -764,12 +920,12 @@ function updatePhones(mission, connected) {
     ? claimed.map((d) => `Drone ${d}: ${connected.includes(d) ? 'linked' : 'not linked'}`).join(' · ')
     : 'No phones have joined yet';
   const launched = mission?.launchAt != null;
+  $('joinBox').hidden = launched;   // once launched no one can join, so the QR code goes
   $('launch').disabled = launched || !mission;
   $('launch').textContent = launched ? 'Launched' : `Launch with ${claimed.length} ${claimed.length === 1 ? 'phone' : 'phones'}`;
 }
 
 if (phoneMode) {
-  $('speed').disabled = true;     // every device runs on the same clock
   link = createPhoneLink({
     seed: terrainSeed,
     fleet: +$('drones').value,
@@ -787,3 +943,9 @@ if (phoneMode) {
 }
 reset();
 requestAnimationFrame(loop);
+{
+  // open in 3D with ?view=3d, or in whichever view was used last
+  let start = params.get('view');
+  try { start ??= localStorage.getItem('swarm.view'); } catch {}
+  if (start === '3d') setView(true);
+}

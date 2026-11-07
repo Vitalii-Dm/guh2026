@@ -57,6 +57,7 @@ async function join() {
 const joined = await join();
 const { drone: droneId, seed, fleet, id: missionId } = joined;
 let launchAt = joined.launchAt;
+let clock = joined.clock;        // the mission clock: launch time and speed
 const offset = await measureClock();
 const helperNow = () => Date.now() + offset;
 log(`joined as drone ${droneId}, clock offset ${Math.round(offset)} ms`);
@@ -109,8 +110,8 @@ function updateStatus() {
 }
 
 function run() {
-  if (launchAt === null || helperNow() < launchAt) return;
-  const message = phone.advance(missionTick(helperNow(), launchAt));
+  if (launchAt === null || !clock || helperNow() < launchAt) return;
+  const message = phone.advance(missionTick(helperNow(), clock));
   if (message) net.send(message);
 }
 
@@ -168,6 +169,7 @@ async function watchMission() {
     const mission = await (await fetch('/mission')).json();
     if (mission.id !== missionId) return location.reload();   // the big screen started a new run
     if (launchAt === null && mission.launchAt !== null) { launchAt = mission.launchAt; log(`launch at ${launchAt}`); }
+    if (mission.clock && JSON.stringify(mission.clock) !== JSON.stringify(clock)) { clock = mission.clock; log(`speed ${clock.rate}x`); }
   } catch { /* no network: nothing here changes what the drone does */ }
 }
 

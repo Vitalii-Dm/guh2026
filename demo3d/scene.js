@@ -459,7 +459,7 @@ export function createScene3D(container, { W, H, BASE }) {
       tag.position.copy(pos).add(S.set(0, 13, 0));
       const hops = d.state.hops === null ? 'no route' : `${d.state.hops} hops`;
       setHTML(tag, d.alive
-        ? `${R.isHub(d.state) ? '<b class="hub">Hub</b> ' : d.hubStatus === 'suspect' ? '<b class="sus">?</b> ' : ''}${d.id}: ${hops}${d.muling ? '<br><span class="mule">carrying report</span>' : ''}`
+        ? `${R.isHub(d.state) ? '<b class="hub">Hub</b> ' : d.hubStatus === 'suspect' ? '<b class="sus">?</b> ' : ''}${d.id}: ${hops}${d.remote ? `<br><span class="phone">${d.inContact ? 'phone' : 'phone: no contact'}</span>` : ''}${d.muling ? '<br><span class="mule">carrying report</span>' : ''}`
         : `<span class="dead">${d.id} down</span>`);
       if (tag.userData.dim !== dim) { tag.userData.dim = dim; tag.element.style.opacity = dim; }
     }

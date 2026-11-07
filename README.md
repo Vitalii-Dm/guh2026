@@ -4,7 +4,7 @@ For GreatUniHack 2026, Neptune North challenge. Drones search mountains for miss
 
 - `recovery/`: drop-in frontend modules (no dependencies). See [recovery/README.md](recovery/README.md).
 - `demo/`: interactive demo. `drone.js` is what one drone does, `sim.js` is the simulation with no DOM, `demo.js` draws it. Choose how many drones launch, fail them, paint a radio blackout, cut all radio, and watch the search graph. The graph compares this run with two unseen runs on the same terrain: one with comms on and nothing failed, one with no radio from launch.
-- `demo3d/`: the same demo in 3D (Three.js, vendored in `demo3d/vendor/three`, MIT). It runs the same `demo/sim.js`; drag to orbit, scroll to zoom, click a drone to see its view.
+- `demo3d/`: the 3D view (`scene.js`, with Three.js vendored in `demo3d/vendor/three`, MIT). It's built into the main demo: the **3D view** / **2D view** button switches between them on the same running simulation, phones included. In 3D, drag to orbit, scroll to zoom, click a drone to see its view.
 - `nca/train_nca.py`: trains the network on the formation shape (PyTorch).
 - `demo/phone.html`: a page that turns an iPhone into one of the drones. `phone-drone.js` flies it, `net.js` links devices directly, and `phone-server.mjs` is the helper that introduces them. See [Run with phones](#run-with-phones).
 - `docs/hub-recovery-plan.md`: the plan for this part and how it plugs into the team's work.
@@ -26,7 +26,7 @@ Serve the repo root, because ES modules don't load from `file://`:
 python3 serve.py
 ```
 
-Then open http://localhost:8080/demo/ for the 2D version or http://localhost:8080/demo3d/ for 3D.
+Then open http://localhost:8080/demo/ and use the 3D view / 2D view button to switch. http://localhost:8080/demo3d/ (or `?view=3d`) opens it straight in 3D; the page also remembers the last view you used.
 
 ## Run with phones
 
@@ -40,7 +40,7 @@ Open http://localhost:8080/ on the laptop and keep that window in front. This is
 
 Wait about 35 seconds after launch, for the phone drones to reach their strips. Then turn on aeroplane mode on a phone: it keeps searching on its own, and what it found merges in when it reconnects. Keep the phone page open throughout, because a hidden page stops running.
 
-Phone mode is in the 2D demo only; `demo3d/` doesn't show phone drones. Keep the big screen's window in front: if it's hidden it stops running, and the swarm wrongly writes off the phones.
+Phone drones show in both views. Keep the big screen's window in front: if it's hidden it stops running, and the swarm wrongly writes off the phones.
 
 The helper only introduces devices, and holds no swarm data. Phones need it to join and to reconnect after an outage, but linked phones keep talking without it. Flight, sensors and the missing people are simulated on each phone; the network and any outage are real. To read what each phone logged during a run, open http://localhost:8080/report.
 

@@ -7,7 +7,7 @@ import { networkInterfaces } from 'node:os';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import qrcode from 'qrcode-generator';
-import { LAUNCH_DELAY_MS, MAX_FLEET, MIN_FLEET, PHONE_DRONES } from './mission.js';
+import { DEFAULT_RATE, LAUNCH_DELAY_MS, MAX_FLEET, MIN_FLEET, PHONE_DRONES, RATES, changeRate, launchClock } from './mission.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 // The address may be public through a tunnel, so only these folders are served.
@@ -77,12 +77,12 @@ export function createHelper({ now = Date.now } = {}) {
   const lastPoll = new Map();   // device id -> time of its last poll
   const inboxes = new Map();    // device id -> messages waiting for it
   const reports = new Map();    // device id -> its latest log, for reading rehearsals on the laptop
-  let mission = null;           // { id, seed, fleet, launchAt, claims: phone key -> drone }
+  let mission = null;           // { id, seed, fleet, launchAt, rate, clock, claims: phone key -> drone }
 
   const joinUrl = (req) => `http://${lanAddress() ?? 'localhost'}:${req.socket.localPort}/demo/phone.html`;
 
   const missionView = (req) => mission && {
-    id: mission.id, seed: mission.seed, fleet: mission.fleet, launchAt: mission.launchAt,
+    id: mission.id, seed: mission.seed, fleet: mission.fleet, launchAt: mission.launchAt, rate: mission.rate, clock: mission.clock,
     drones: [...mission.claims.values()].sort((a, b) => a - b),
     joinUrl: joinUrl(req),
   };
@@ -105,13 +105,25 @@ export function createHelper({ now = Date.now } = {}) {
       if (url.pathname === '/mission' && req.method === 'POST') {
         const { seed, fleet = MAX_FLEET } = JSON.parse(await readBody(req));
         if (!Number.isInteger(seed) || !Number.isInteger(fleet) || fleet < MIN_FLEET || fleet > MAX_FLEET) return send(res, 400, { error: 'bad mission' });
-        mission = { id: now(), seed, fleet, launchAt: null, claims: new Map() };
+        mission = { id: now(), seed, fleet, launchAt: null, rate: DEFAULT_RATE, clock: null, claims: new Map() };
         return send(res, 200, missionView(req));
       }
       if (url.pathname === '/mission' && req.method === 'GET') return send(res, 200, missionView(req) ?? {});
       if (url.pathname === '/launch' && req.method === 'POST') {
         if (!mission) return send(res, 409, { error: 'no mission' });
-        mission.launchAt ??= now() + LAUNCH_DELAY_MS;
+        if (mission.launchAt === null) {
+          mission.launchAt = now() + LAUNCH_DELAY_MS;
+          mission.clock = launchClock(mission.launchAt, mission.rate);
+        }
+        return send(res, 200, missionView(req));
+      }
+      // The big screen's speed slider: every device follows the same clock.
+      if (url.pathname === '/speed' && req.method === 'POST') {
+        if (!mission) return send(res, 409, { error: 'no mission' });
+        const { rate } = JSON.parse(await readBody(req));
+        if (!RATES.includes(rate)) return send(res, 400, { error: 'bad rate' });
+        if (rate !== mission.rate && mission.clock) mission.clock = changeRate(mission.clock, rate, now());
+        mission.rate = rate;
         return send(res, 200, missionView(req));
       }
       if (url.pathname === '/join' && req.method === 'POST') {
