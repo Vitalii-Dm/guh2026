@@ -60,6 +60,8 @@ Timing: the simulation ticks every 160 ms and the numbers refresh on each tick (
 
 Clicking a drone opens a panel and switches the map to that drone's view. Escape, "Back to full view" or clicking empty map leaves it.
 
+In that view the ground it knows is painted by source: solid in its own colour (white outline) where it searched itself, lighter in another drone's colour where that drone searched it and the news reached this one. Ground searched by a drone that's down is grey. Its home strip is outlined dashed. The panel's "Where its map came from" list gives the same split as shares of the map. Read it from `d.own` (cells it searched itself) and `world.searchedBy` (first drone to search each cell). Both are display-only and aren't sent by radio: a real drone knows a cell is searched, not who searched it.
+
 | Row | Meaning | Read it from |
 |---|---|---|
 | Doing | Its current job, in plain words | `d.task` |
@@ -113,7 +115,7 @@ It tries to answer three questions at once: which reports reached base, who is o
 
 The vertical markers are `hub failed`, `drone N failed`, `blackout`, `blackout lifted`, `radio cut` and `radio back`. Each legend row shows the latest value, and hovering gives all four at that moment. The data is in `history` and `marks`. In Formation mode the comparison runs keep searching, so the lines stop being comparable.
 
-## Events log
+## Field log (events)
 
 It shows the newest 40, each with a time in seconds. Messages contain HTML (`<b>`).
 
@@ -121,16 +123,16 @@ It shows the newest 40, each with a time in seconds. Messages contain HTML (`<b>
 |---|---|
 | Launch | Swarm launched over terrain #2026: 9 drones, drone 1 is the hub, 7 missing people |
 | Person found | Person s3 found by drone 4 |
-| Person found again | Person s3 found again by drone 6 — the first report was lost |
-| Report delivered | Report for person s3 reached base — rescue team dispatched |
-| Drone failed | Drone 2 failed — it was the hub |
-| Hub takeover | Drone 3 took over as hub (epoch1) — lowest live id it can reach |
-| Hub suspect | Drone 5: no word from hub 1 for 5 s — hub suspect |
-| Marked failed | Drone 4 has heard nothing of drone 2 for 14 s — treating it as failed |
-| Carrying a report | Drone 6 has no route to base — flying report s3 back (data mule) |
+| Person found again | Person s3 found again by drone 6. The first report was lost. |
+| Report delivered | Report for person s3 reached base. Rescue team dispatched. |
+| Drone failed | Drone 2 failed. It was the hub. |
+| Hub takeover | Drone 3 took over as hub (epoch1), the lowest live id it can reach |
+| Hub suspect | Drone 5: no word from hub 1 for 5 s, hub suspect |
+| Marked failed | Drone 4 has heard nothing of drone 2 for 14 s and treats it as failed |
+| Carrying a report | Drone 6 has no route to base, so it's flying report s3 back itself (data mule) |
 | Carrying failed | Drone 6 can't reach base even from here — back to searching, will retry |
 | Hub already down | The hub is already down — no drone has taken over yet |
-| Gecko regrow | Formation panel: damage too close to the seed — regrowing from one cell |
+| Gecko regrow | Gecko panel: the damage reached the seed cell, so it regrows from one cell |
 
 People are named three ways: `s3` in the log and drone panel, `3` in the grid, and "Person s3" in sentences. One name throughout would help.
 
@@ -141,7 +143,7 @@ People are named three ways: `s3` in the log and drone panel, `3` in the grid, a
 | Image | The self-repairing V. Failing a drone or clicking the image erases part of it | `nca.draw()`, or `nca.draw(ctx, bg, nca.views.get(id))` for a selected drone's copy |
 | Tinted patches, id badges | Which drone computes which cells | `nca.assignOwners()` |
 | White / red dashed borders | Edge cells swapped by radio / neighbour out of reach, using an old copy | `stepSwarm()` returns `{ fresh, stale }` |
-| shape 100% · 9 drones computing · 59 edges shared · 8 stale | Shape match, patch count, border counts | `nca.similarity()`, `stepSwarm()` |
+| Shape 100% restored. 9 drones computing, 59 edges shared, 8 stale. | Shape match, patch count, border counts | `nca.similarity()`, `stepSwarm()` |
 
 Map extras: dots along links (orange found person, green base has it, gold new hub, small blue searched map), rings as news reaches each drone, and "k/n drones know" under each found person. All from `demo/messages.js`.
 

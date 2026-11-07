@@ -90,7 +90,7 @@ function select(d) {
   selected = d;
   $('droneCard').hidden = !d;
   $('viewBanner').hidden = !d;
-  if (d) $('viewBanner').textContent = `Drone ${d.id}'s view: only what it has seen or been told`;
+  if (d) $('viewBanner').innerHTML = `Drone ${d.id}'s view. Solid: ground it searched itself. Faint: ground another drone searched and told it about, in that drone's colour.`;
   updateDronePanel();
   updateGrid();
 }
@@ -132,7 +132,7 @@ $('knowGrid').addEventListener('pointerdown', (e) => {
 });
 $('failHub').onclick = () => {
   const hub = world.drones.find((d) => d.id === world.currentHub());
-  if (hub?.alive) fail(hub); else log('The hub is already down — no drone has taken over yet');
+  if (hub?.alive) fail(hub); else log('The hub is already down and no drone has taken over yet');
 };
 $('failRandom').onclick = () => { const live = world.drones.filter((d) => d.alive); fail(live[Math.floor(Math.random() * live.length)]); };
 $('paint').onclick = () => setPainting(!painting);
@@ -160,7 +160,69 @@ for (const el of document.querySelectorAll('input[name=mode]')) {
 }
 
 // ---------------------------------------------------------------- drawing
-const hue = (rank, n) => `hsl(${(rank / Math.max(1, n)) * 300 + 170}, 65%, 58%)`;
+const hueDeg = (rank, n) => (rank / Math.max(1, n)) * 300 + 170;
+const hue = (rank, n) => `hsl(${hueDeg(rank, n)}, 65%, 58%)`;
+
+/** A drone's colour as [r, g, b]; the same one its dot uses. Down drones are grey. */
+function droneRgb(id) {
+  const d = world.drones.find((x) => x.id === id);
+  if (!d || !d.alive) return [150, 150, 160];
+  const ids = R.liveIds(d.state);
+  const h = hueDeg(ids.indexOf(d.id), ids.length) % 360, sat = 0.65, l = 0.58;
+  const k = (n) => (n + h / 30) % 12, a = sat * Math.min(l, 1 - l);
+  const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  return [f(0) * 255, f(8) * 255, f(4) * 255];
+}
+
+// Who searched what, for a selected drone: its own cells solid in its colour,
+// cells it was told about faint in the colour of the drone that searched them.
+const paint = document.createElement('canvas');
+paint.width = COLS; paint.height = ROWS;
+const paintCtx = paint.getContext('2d');
+const paintImg = paintCtx.createImageData(COLS, ROWS);
+function drawWhoSearched(d) {
+  const px = paintImg.data, cache = new Map();
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const i = r * COLS + c, o = i * 4;
+    if (!R.isVisited(d.state, c, r)) { px[o + 3] = 0; continue; }
+    const own = d.own[i] === 1;
+    const by = own ? d.id : world.searchedBy[i];
+    if (!cache.has(by)) cache.set(by, droneRgb(by));
+    const [cr, cg, cb] = cache.get(by);
+    px[o] = cr; px[o + 1] = cg; px[o + 2] = cb; px[o + 3] = own ? 175 : 105;
+  }
+  paintCtx.putImageData(paintImg, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(paint, 0, 0, W, H);
+  ctx.imageSmoothingEnabled = true;
+  // edges: white around what it searched itself, thin dark lines between
+  // areas that came from different drones
+  const src = (c, r) => (c < 0 || r < 0 || c >= COLS || r >= ROWS || !R.isVisited(d.state, c, r)) ? -1 : d.own[r * COLS + c] ? d.id : world.searchedBy[r * COLS + c];
+  for (const [colour, width, ownOnly] of [['rgba(4,10,20,0.55)', 1, false], ['#ffffff', 2, true]]) {
+    ctx.strokeStyle = colour; ctx.lineWidth = width; ctx.beginPath();
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+      const a = src(c, r);
+      for (const [dc, dr] of [[1, 0], [0, 1]]) {
+        const b = src(c + dc, r + dr);
+        if (a === b || (ownOnly ? a !== d.id && b !== d.id : a === -1 || b === -1)) continue;
+        if (ownOnly && (a === d.id) === (b === d.id)) continue;
+        const x = (c + dc) * CELL, y = (r + dr) * CELL;
+        if (dc) { ctx.moveTo(x, r * CELL); ctx.lineTo(x, (r + 1) * CELL); } else { ctx.moveTo(c * CELL, y); ctx.lineTo((c + 1) * CELL, y); }
+      }
+    }
+    ctx.stroke();
+  }
+  // its responsibility: the home strip it was given
+  if (mode === 'search') {
+    const [c0, c1] = R.homeSector(d.state, d.id, COLS);
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.setLineDash([8, 5]);
+    ctx.strokeRect(c0 * CELL + 1, 1, (c1 - c0) * CELL - 2, H - 2);
+    ctx.setLineDash([]);
+    ctx.font = '700 11px system-ui'; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(4,10,20,0.85)';
+    const label = `drone ${d.id}'s home strip`;
+    ctx.strokeText(label, ((c0 + c1) / 2) * CELL, H - 10); ctx.fillStyle = '#fff'; ctx.fillText(label, ((c0 + c1) / 2) * CELL, H - 10);
+  }
+}
 
 function drawDrone(d, color) {
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
@@ -206,6 +268,7 @@ function draw() {
   for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) if (!searched(c, r)) fogCtx.fillRect(c, r, 1, 1);
   ctx.imageSmoothingEnabled = true;
   ctx.drawImage(fog, 0, 0, W, H);
+  if (selected) drawWhoSearched(selected);
 
   const live = world.drones.filter((d) => d.alive);
   const ranks = (d) => R.liveIds(d.state).indexOf(d.id);
@@ -296,7 +359,7 @@ function draw() {
       ctx.beginPath(); ctx.arc(d.x, d.y, 14, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
       ctx.fillStyle = '#f29e4c'; ctx.font = '700 11px system-ui'; ctx.fillText('?', d.x, d.y - 18);
     }
-    ctx.fillStyle = 'rgba(240,245,250,0.9)'; ctx.font = '600 10px system-ui'; ctx.fillText(`${d.id} · ${d.state.hops === null ? 'no route' : `${d.state.hops} hops`}`, d.x, d.y + 22);
+    ctx.fillStyle = 'rgba(240,245,250,0.9)'; ctx.font = '600 10px system-ui'; ctx.fillText(`${d.id}: ${d.state.hops === null ? 'no route' : `${d.state.hops} hops`}`, d.x, d.y + 22);
     if (d.muling) { ctx.fillStyle = '#ff7a59'; ctx.font = '600 10px system-ui'; ctx.fillText('carrying report', d.x, d.y + 33); }
   }
   ctx.globalAlpha = 1;
@@ -323,6 +386,21 @@ function updateDronePanel() {
   ];
   $('droneTitle').textContent = `Drone ${d.id}`;
   $('droneFacts').innerHTML = facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+  // where its map came from
+  const total = COLS * ROWS, from = new Map();
+  let ownN = 0;
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const i = r * COLS + c;
+    if (!R.isVisited(s, c, r)) continue;
+    if (d.own[i]) ownN++; else from.set(world.searchedBy[i], (from.get(world.searchedBy[i]) || 0) + 1);
+  }
+  const pct = (n) => `${Math.round((n / total) * 100)}%`;
+  const sw = (id, solid) => { const [r, g, b] = droneRgb(id); return `<i class="sw" style="background:rgba(${r | 0},${g | 0},${b | 0},${solid ? 1 : 0.45})"></i>`; };
+  const others = [...from.entries()].sort((a, b) => b[1] - a[1]);
+  $('droneShare').innerHTML = `<div>${sw(d.id, true)}Searched itself <b>${pct(ownN)}</b> of the map</div>` +
+    (others.length ? `<div class="k">Told by other drones: <b>${pct(others.reduce((n, [, v]) => n + v, 0))}</b></div>` +
+      others.map(([id, n]) => { const x = world.drones.find((q) => q.id === id); return `<div>${sw(id, false)}from drone ${id}${x && !x.alive ? ' (down)' : ''} <b>${pct(n)}</b></div>`; }).join('')
+      : '<div class="k">Nothing from other drones yet</div>');
   $('droneReports').innerHTML = reports.map(([id, r]) => `<li>${id}: found by drone ${r.foundBy}, ${r.delivered ? 'it knows base has this' : 'not known to be at base'}</li>`).join('');
 }
 
@@ -360,8 +438,8 @@ function updateStats() {
   const epoch = hubDrone ? hubDrone.state.hub.epoch : live[0]?.state.hub.epoch;
   const waiting = live.filter((d) => d.hubStatus === 'suspect' && !R.isHub(d.state)).length;
   $('hubline').innerHTML = !live.length ? '<span class="suspect">No drones left</span>' : hubDrone && hubDrone.alive
-    ? `Hub: <b>drone ${hub}</b> · epoch ${epoch}` + (waiting ? ` · <span class="suspect">${waiting} drones can't hear it</span>` : '')
-    : `<span class="suspect">Hub ${hub} silent — ${waiting}/${live.length} drones noticed; still searching, a drone that can hear others takes over after about ${Math.round(R.DEFAULTS.hubTimeout * SECONDS_PER_TICK)} s</span>`;
+    ? `Hub is <b>drone ${hub}</b>, epoch ${epoch}.` + (waiting ? ` <span class="suspect">${waiting} drones can't hear it.</span>` : '')
+    : `<span class="suspect">Hub ${hub} is silent and ${waiting} of ${live.length} drones have noticed. The search goes on; a drone that can hear others takes over after about ${Math.round(R.DEFAULTS.hubTimeout * SECONDS_PER_TICK)} s.</span>`;
 }
 
 // ---------------------------------------------------------------- graph
@@ -399,7 +477,7 @@ function drawGraph() {
   const tMax = Math.max(500, world.tick);
   const X = (t) => PAD.l + (t / tMax) * iw, Y = (v) => PAD.t + (1 - v / 100) * ih;
 
-  gctx.font = '11px system-ui'; gctx.fillStyle = '#8b9bb0'; gctx.strokeStyle = '#223042'; gctx.lineWidth = 1;
+  gctx.font = '12px Barlow, system-ui'; gctx.fillStyle = '#a3abad'; gctx.strokeStyle = '#424b50'; gctx.lineWidth = 1;
   gctx.textAlign = 'right'; gctx.textBaseline = 'middle';
   for (const v of [0, 50, 100]) {
     gctx.beginPath(); gctx.moveTo(PAD.l, Y(v)); gctx.lineTo(cw - PAD.r, Y(v)); gctx.stroke();
@@ -413,11 +491,11 @@ function drawGraph() {
   let lastLabelEnd = -Infinity;
   for (const m of marks) {
     const x = X(m.tick);
-    gctx.strokeStyle = '#3a4d66'; gctx.setLineDash([2, 3]);
+    gctx.strokeStyle = '#5a646a'; gctx.setLineDash([2, 3]);
     gctx.beginPath(); gctx.moveTo(x, PAD.t); gctx.lineTo(x, PAD.t + ih); gctx.stroke();
     gctx.setLineDash([]);
     if (x < lastLabelEnd) continue;  // keep labels from colliding
-    gctx.fillStyle = '#8b9bb0'; gctx.fillText(m.label, x + 3, PAD.t - 4);
+    gctx.fillStyle = '#a3abad'; gctx.fillText(m.label, x + 3, PAD.t - 4);
     lastLabelEnd = x + gctx.measureText(m.label).width + 10;
 
   }
@@ -435,9 +513,9 @@ function drawGraph() {
   if (hoverX === null || !history.length) { tip.hidden = true; return; }
   const t = ((hoverX - PAD.l) / iw) * tMax;
   const p = history.reduce((a, b) => (Math.abs(b.tick - t) < Math.abs(a.tick - t) ? b : a));
-  gctx.strokeStyle = '#8b9bb0'; gctx.beginPath(); gctx.moveTo(X(p.tick), PAD.t); gctx.lineTo(X(p.tick), PAD.t + ih); gctx.stroke();
+  gctx.strokeStyle = '#a3abad'; gctx.beginPath(); gctx.moveTo(X(p.tick), PAD.t); gctx.lineTo(X(p.tick), PAD.t + ih); gctx.stroke();
   for (const s of SERIES) {
-    gctx.fillStyle = s.colour; gctx.strokeStyle = '#121821'; gctx.lineWidth = 2;
+    gctx.fillStyle = s.colour; gctx.strokeStyle = '#22282c'; gctx.lineWidth = 2;
     gctx.beginPath(); gctx.arc(X(p.tick), Y(p[s.key]), 4, 0, Math.PI * 2); gctx.fill(); gctx.stroke();
   }
   tip.hidden = false;
@@ -470,7 +548,7 @@ function watchNca() {
   if (ncaWatch % 30 === 0 && nca.similarity() >= NCA_OK) { ncaWatch = null; return; }
   if (ncaWatch > NCA_GIVE_UP) {
     nca.reset(); ncaWatch = null;
-    log('Formation panel: damage too close to the seed — regrowing from one cell');
+    log('Gecko panel: the damage reached the seed cell, so it regrows from one cell');
   }
 }
 
@@ -567,7 +645,7 @@ const ncaCanvas = $('nca'), ncaCtx = ncaCanvas.getContext('2d');
 fetch('../recovery/models/formation-nca.json')
   .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
   .then((model) => { nca = new NCA(model); nca.reset(); })
-  .catch(() => { $('ncaSim').textContent = 'model not trained yet — run nca/train_nca.py'; });
+  .catch(() => { $('ncaSim').textContent = 'No trained model found. Run nca/train_nca.py to make one.'; });
 ncaCanvas.addEventListener('click', (e) => {
   if (!nca) return;
   const r = ncaCanvas.getBoundingClientRect();
@@ -598,8 +676,8 @@ function loop(t) {
     drawNca();
     if (frame % 15 === 0) {
       const n = ncaPatches.slots?.length || 0;
-      $('ncaSim').innerHTML = `shape ${Math.round(nca.similarity() * 100)}% · ${n} drones computing · ${ncaLast.fresh} edges shared` +
-        (ncaLast.stale ? ` · <span style="color:#ff5a50">${ncaLast.stale} stale</span>` : '');
+      $('ncaSim').innerHTML = `Shape ${Math.round(nca.similarity() * 100)}% restored. ${n} drones computing, ${ncaLast.fresh} edges shared` +
+        (ncaLast.stale ? `, <span style="color:#ff5a50">${ncaLast.stale} stale</span>.` : '.');
       $('ncaTitle').textContent = selected ? `Drone ${selected.id}'s copy of the network` : 'The gecko network, running on the drones';
     }
   }

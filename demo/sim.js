@@ -62,12 +62,14 @@ export function createSim({ seed, terrain, drones = N_DRONES, range = 190, los =
       const a = Math.PI * (0.15 + 0.7 * (i / (drones - 1)));
       return { id, alive: true, x: BASE.x - Math.cos(a) * 70, y: BASE.y - Math.sin(a) * 50, hubStatus: 'ok', commsMode: 'hub',
         state: R.createState(id, ids, { hubId: 1, cols: COLS, rows: ROWS }), target: null, angle: 0, diedAt: null,
-        muling: false, atBaseTicks: 0, restUntil: 0, task: 'launching' };
+        muling: false, atBaseTicks: 0, restUntil: 0, task: 'launching',
+        own: new Uint8Array(COLS * ROWS) };             // cells it searched itself (display only)
     }),
     survivors: Array.from({ length: N_SURVIVORS }, (_, i) => ({
       id: `s${i + 1}`, ...terrain.randomLandPoint(rng), foundBy: null, pose: rng(),
     })),
     truthVisited: new Set(),
+    searchedBy: new Int16Array(COLS * ROWS), // first drone to search each cell, 0 = nobody (display only)
     blackout: new Uint8Array(COLS * ROWS), // painted cells: no radio in or out
     links: [],                       // pairs that can talk
     blocked: [],                     // pairs in range but behind a ridge
@@ -127,12 +129,12 @@ export function createSim({ seed, terrain, drones = N_DRONES, range = 190, los =
       n.commsMode = mode;
       for (const e of events) {
         const [type, a, b] = e.split(':');
-        if (type === 'became-hub') onLog(`<b>Drone ${a} took over as hub</b> (${b}) — lowest live id it can reach`, e);
-        if (type === 'marked-failed') onLog(`Drone ${n.id} has heard nothing of drone ${a} for ${SECONDS(R.DEFAULTS.failTimeout)} s — treating it as failed`, `mf${a}`);
-        if (type === 'delivered') onLog(`Report for person ${a} reached base — rescue team dispatched`, e);
+        if (type === 'became-hub') onLog(`<b>Drone ${a} took over as hub</b> (${b}), the lowest live id it can reach`, e);
+        if (type === 'marked-failed') onLog(`Drone ${n.id} has heard nothing of drone ${a} for ${SECONDS(R.DEFAULTS.failTimeout)} s and treats it as failed`, `mf${a}`);
+        if (type === 'delivered') onLog(`Report for person ${a} reached base. Rescue team dispatched.`, e);
       }
       if (n !== sim.base && hubStatus === 'suspect' && !R.isHub(n.state) && mode !== 'alone') {
-        onLog(`Drone ${n.id}: no word from hub ${n.state.hub.id} for ${SECONDS(R.DEFAULTS.hubTimeout)} s — hub suspect`, `sus${n.state.hub.id}e${n.state.hub.epoch}`);
+        onLog(`Drone ${n.id}: no word from hub ${n.state.hub.id} for ${SECONDS(R.DEFAULTS.hubTimeout)} s, hub suspect`, `sus${n.state.hub.id}e${n.state.hub.epoch}`);
       }
     });
     for (const d of sim.drones) if (d.alive) d.target = chooseTarget(d);
@@ -144,12 +146,12 @@ export function createSim({ seed, terrain, drones = N_DRONES, range = 190, los =
     const home = { x: BASE.x, y: BASE.y - HOME_OFFSET };
     if (Math.hypot(d.x - home.x, d.y - home.y) < 12 && ++d.atBaseTicks > MULE_WAIT) {
       // Made it back and base still can't hear us: search on, try again later.
-      onLog(`Drone ${d.id} can't reach base even from here — back to searching, will retry`, `rest${d.id}t${sim.tick}`);
+      onLog(`Drone ${d.id} can't reach base even from here. Back to searching; it will retry later.`, `rest${d.id}t${sim.tick}`);
       d.restUntil = sim.tick + MULE_REST;
       d.muling = false; d.atBaseTicks = 0;
       return null;
     }
-    onLog(`Drone ${d.id} has no route to base — flying report ${report} back (data mule)`, `mule${report}d${d.id}`);
+    onLog(`Drone ${d.id} has no route to base, so it's flying report ${report} back itself (data mule)`, `mule${report}d${d.id}`);
     d.muling = true;
     d.task = `carrying the report for ${report} home`;
     return home;
@@ -200,6 +202,8 @@ export function createSim({ seed, terrain, drones = N_DRONES, range = 190, los =
           if (Math.hypot(c * CELL + CELL / 2 - d.x, r * CELL + CELL / 2 - d.y) <= SENSE) {
             R.recordVisit(d.state, c, r);
             sim.truthVisited.add(`${c},${r}`);
+            d.own[r * COLS + c] = 1;
+            if (!sim.searchedBy[r * COLS + c]) sim.searchedBy[r * COLS + c] = d.id;
           }
         }
       }
@@ -210,7 +214,7 @@ export function createSim({ seed, terrain, drones = N_DRONES, range = 190, los =
         const again = s.foundBy && !sim.holders(s).length;
         R.recordSurvivor(d.state, s.id, s.x, s.y, sim.tick);
         if (!s.foundBy) { s.foundBy = d.id; onLog(`<b>Person ${s.id} found</b> by drone ${d.id}`); }
-        else if (again) onLog(`<b>Person ${s.id} found again</b> by drone ${d.id} — the first report was lost`);
+        else if (again) onLog(`<b>Person ${s.id} found again</b> by drone ${d.id}. The first report was lost.`);
       }
     }
   }
@@ -250,7 +254,7 @@ export function createSim({ seed, terrain, drones = N_DRONES, range = 190, los =
     const wasHub = sim.currentHub() === d.id;
     const slot = R.formationSlotFor(d.state, d.id);
     d.alive = false; d.diedAt = now;
-    onLog(`<b>Drone ${d.id} failed</b>${wasHub ? ' — it was the hub' : ''}`);
+    onLog(`<b>Drone ${d.id} failed</b>${wasHub ? '. It was the hub.' : ''}`);
     return slot;
   };
 
