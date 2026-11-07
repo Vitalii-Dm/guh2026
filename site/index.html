@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ridgeline: rescue swarm</title>
+<meta name="description" content="A drone swarm that keeps searching Himalayan valleys after the radio dies and the hub falls.">
+<meta name="theme-color" content="#06101f">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Fixed landscape that every section sits on. Drawn by scene.js. -->
+<div class="sky" aria-hidden="true">
+  <div class="stars"></div>
+  <div class="moon"></div>
+  <svg class="ridges" id="ridges" preserveAspectRatio="xMidYMax slice"></svg>
+  <div class="mist mist-a"></div>
+  <div class="mist mist-b"></div>
+  <div class="dusk"></div>
+</div>
+
+<nav class="nav glass" aria-label="Sections">
+  <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true"></span>Ridgeline</a>
+  <div class="nav-links">
+    <a href="#problem">Problem</a>
+    <a href="#solution">Solution</a>
+    <a href="#how">How it works</a>
+    <a href="#try">Try it</a>
+    <a href="#rescue">Rescue</a>
+  </div>
+</nav>
+
+<main>
+
+<!-- 1 · HERO -->
+<section class="hero" id="top">
+  <svg class="hero-swarm" id="heroSwarm" viewBox="0 0 1200 400" aria-hidden="true"></svg>
+  <div class="hero-inner">
+    <p class="eyebrow">GreatUniHack 2026 · Neptune North challenge</p>
+    <h1 class="title">Ridge<span>line</span></h1>
+    <p class="lede">A rescue drone swarm that keeps searching after the radio dies and the hub drone falls, and still gets every find home.</p>
+    <div class="hero-cta">
+      <a class="btn btn-primary" href="#problem">See why it matters</a>
+      <a class="btn btn-glass" href="#try">Break it yourself</a>
+    </div>
+  </div>
+  <a class="scroll-cue" href="#problem" aria-label="Scroll to the problem"><span></span></a>
+</section>
+
+<!-- 2 · PROBLEM -->
+<section class="section" id="problem">
+  <div class="wrap">
+    <p class="kicker">The problem</p>
+    <h2 class="h2">Langtang, 26 August 2026.<br><em>08:40 in the morning.</em></h2>
+
+    <ol class="timeline glass reveal">
+      <li><b>Avalanche</b><span>Rock and ice break off the north face of Langtang Lirung, about 5,200 m up.</span></li>
+      <li><b>Dam</b><span>The debris blocks the Lhende Khola and a lake builds up behind it.</span></li>
+      <li><b>Burst</b><span>The dam gives way. The Trishuli rises up to 9 m in 30 minutes, through Rasuwa and Nuwakot.</span></li>
+      <li><b>Silence</b><span>Communication towers go down before 09:00. The valleys go dark.</span></li>
+    </ol>
+
+    <div class="stats reveal">
+      <div class="stat glass">
+        <span class="stat-n" data-count="668">668</span>
+        <span class="stat-k">tourists from 34 countries out of contact the next day, most of them trekking</span>
+      </div>
+      <div class="stat glass">
+        <span class="stat-n" data-count="5285">5,285</span>
+        <span class="stat-k">people still missing in Nepal six weeks later</span>
+      </div>
+      <div class="stat glass">
+        <span class="stat-n" data-count="15">15</span>
+        <span class="stat-k">days before helicopters could reach Tiru village</span>
+      </div>
+    </div>
+
+    <div class="why glass reveal">
+      <div class="why-text">
+        <h3>Why drones alone don't fix it</h3>
+        <p>Drones can reach a valley in minutes, but here they share the valley's problem: <b>the mountain blocks the radio.</b> A drone that drops behind a ridge goes silent. If the hub drone coordinating the others fails, the whole search waits for orders that never come, and what the drones found never reaches the rescue team.</p>
+      </div>
+      <svg class="why-fig" id="whyFig" viewBox="0 0 520 240" role="img" aria-label="A drone behind a ridge has its radio link to base blocked"></svg>
+    </div>
+
+    <p class="source">Sources: <a href="https://en.wikipedia.org/wiki/2026_Nepal%E2%80%93Tibet_floods" target="_blank" rel="noopener">Wikipedia, 2026 Nepal–Tibet floods</a> (missing as of 5 Oct; Tiru village) · <a href="https://www.aljazeera.com/news/2026/8/27/nepal-tibet-floods-what-happened-what-caused-them-and-who-is-missing" target="_blank" rel="noopener">Al Jazeera, 27 Aug 2026</a> (river rise; tourists out of contact).</p>
+  </div>
+</section>
+
+<!-- 3 · SOLUTION -->
+<section class="section" id="solution">
+  <div class="wrap">
+    <p class="kicker">The solution</p>
+    <h2 class="h2">No drone waits for orders.<br><em>No find is held by one drone alone.</em></h2>
+
+    <div class="pillars">
+      <article class="pillar glass reveal">
+        <svg class="pillar-ico" viewBox="0 0 64 64" aria-hidden="true">
+          <circle cx="14" cy="40" r="6"/><circle cx="32" cy="18" r="6"/><circle cx="50" cy="40" r="6"/>
+          <path d="M18 36 28 23M36 23l10 13M20 40h24"/>
+        </svg>
+        <h3>Shared swarm memory</h3>
+        <p>Every drone keeps its own copy of what the swarm knows: who has been found, which ground is searched, who is still flying. It swaps copies with every drone it meets, so a find that reaches one other drone survives losing the drone that made it.</p>
+      </article>
+      <article class="pillar glass reveal">
+        <svg class="pillar-ico" viewBox="0 0 64 64" aria-hidden="true">
+          <path d="M18 22l6 6 6-10 6 10 6-6-2 14H20z" class="gold"/>
+          <circle cx="16" cy="48" r="5"/><circle cx="32" cy="48" r="5"/><circle cx="48" cy="48" r="5"/>
+        </svg>
+        <h3>No leader to lose</h3>
+        <p>If the hub goes quiet for about 5 seconds, the drone with the lowest ID that can still hear others takes over. If the old hub comes back, it steps down. Search and reports never depended on it, so losing it costs nothing.</p>
+      </article>
+      <article class="pillar glass reveal">
+        <svg class="pillar-ico" viewBox="0 0 64 64" aria-hidden="true">
+          <path d="M8 46 32 16l24 30" class="dash"/>
+          <rect x="12" y="38" width="7" height="7" rx="1.5"/><rect x="21" y="27" width="7" height="7" rx="1.5"/><rect x="29" y="15" width="7" height="7" rx="1.5" class="ghost"/><rect x="37" y="27" width="7" height="7" rx="1.5"/><rect x="46" y="38" width="7" height="7" rx="1.5"/>
+        </svg>
+        <h3>A swarm that heals itself</h3>
+        <p>A neural cellular automaton, inspired by Google's self-repairing gecko, is trained on the formation. The drones compute it between them, each on its own patch. When one falls, its neighbours regrow its part.</p>
+      </article>
+    </div>
+
+    <div class="mule glass reveal">
+      <span class="mule-tag">Last resort</span>
+      <p><b>The data mule.</b> If a drone has a report and no radio route to base, it flies the report home itself. The others wait their turn, so the report still gets home if the first carrier is lost.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 4 · HOW IT WORKS -->
+<section class="section" id="how">
+  <div class="wrap">
+    <p class="kicker">How it works</p>
+    <h2 class="h2">This is the real protocol,<br><em>running in your browser right now.</em></h2>
+    <p class="sub">The graph below isn't an animation. It's our swarm code, the same code as the full demo, on a fixed mountain map. Each dot only knows what its neighbours have told it.</p>
+
+    <div class="net glass reveal">
+      <div class="net-stage">
+        <canvas id="net" width="880" height="600" aria-label="Live network graph of the drone swarm"></canvas>
+        <div class="net-badge"><span class="live-dot"></span>Live · real protocol</div>
+        <div class="net-legend">
+          <span><i class="lg lg-link"></i>radio link</span>
+          <span><i class="lg lg-block"></i>blocked by ridge</span>
+          <span><i class="lg lg-hub"></i>hub</span>
+          <span><i class="lg lg-sos"></i>found</span>
+          <span><i class="lg lg-ok"></i>at base</span>
+        </div>
+      </div>
+      <aside class="net-side">
+        <ol class="steps" id="steps">
+          <li data-step="search"><b>Search</b><span>Each drone sweeps its own strip. Nobody hands out the strips; every drone works them out from the same launch list.</span></li>
+          <li data-step="find"><b>Find</b><span>A drone spots a person and marks them SOS in its own memory.</span></li>
+          <li data-step="relay"><b>Relay</b><span>The report hops from drone to drone until one is in range of base.</span></li>
+          <li data-step="fail"><b>Hub fails</b><span>The gold hub drone goes down. Nobody gets an order to stop, so nobody stops.</span></li>
+          <li data-step="takeover"><b>Takeover</b><span>About 5 seconds later, the lowest live ID claims the hub with a new epoch.</span></li>
+        </ol>
+        <div class="readout">
+          <div><span class="ro-k">Reports at base</span><span class="ro-v" id="roBase">0 / 0</span></div>
+          <div><span class="ro-k">Drones flying</span><span class="ro-v" id="roLive">9 / 9</span></div>
+          <div><span class="ro-k">Hub</span><span class="ro-v gold" id="roHub">drone 1</span></div>
+          <div><span class="ro-k">Area searched</span><span class="ro-v" id="roCov">0%</span></div>
+        </div>
+        <div class="net-ctrl">
+          <button class="btn btn-danger" id="btnFailHub">Fail the hub</button>
+          <button class="btn btn-glass" id="btnRadio">Cut all radio</button>
+          <button class="btn btn-ghost" id="btnReplay" aria-label="Replay from the start">↺ Replay</button>
+        </div>
+        <p class="net-note" id="netNote">Running at 2× speed.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- 5 · TRY IT (QR) -->
+<section class="section" id="try">
+  <div class="wrap">
+    <p class="kicker">Try it</p>
+    <h2 class="h2">Break it yourself.<br><em>The swarm keeps flying.</em></h2>
+
+    <div class="try glass reveal">
+      <div class="try-qr">
+        <div class="qr-frame"><div id="qr" class="qr" role="img" aria-label="QR code that opens the live demo"></div></div>
+        <a class="qr-url" id="qrUrl" href="#" target="_blank" rel="noopener">…</a>
+        <p class="qr-hint" id="qrHint" hidden></p>
+      </div>
+      <div class="try-text">
+        <ol class="try-steps">
+          <li><b>Scan</b> with your phone camera.</li>
+          <li><b>Fail the hub</b>, or any drone you like, or cut the radio.</li>
+          <li><b>Watch</b> the swarm elect a new hub, re-share what it knows and regrow its formation, with no one in charge.</li>
+        </ol>
+        <p class="try-claim">Nothing is scripted. Every drone decides from its own memory, and a small learned network that the drones compute between them regrows the formation when one is lost.</p>
+      </div>
+      <div class="phone" aria-label="Preview of the phone controls">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <p class="ph-title">Ridgeline · live</p>
+          <div class="ph-status">
+            <span>Hub</span><b id="phHub">drone 1</b>
+            <span>Flying</span><b id="phLive">9 / 9</b>
+          </div>
+          <button class="ph-btn ph-danger" data-act="hub">Fail the hub</button>
+          <button class="ph-btn" data-act="drone">Fail a random drone</button>
+          <button class="ph-btn" data-act="radio">Cut all radio</button>
+          <p class="ph-toast" id="phToast" aria-live="polite"></p>
+        </div>
+      </div>
+    </div>
+    <p class="sub center small">The phone preview works: its buttons drive the live graph above.</p>
+  </div>
+</section>
+
+<!-- 6 · RESCUE SCENE -->
+<section class="section" id="rescue">
+  <div class="wrap">
+    <p class="kicker">What it's for</p>
+    <h2 class="h2">Two drones. One ridge.<br><em>One person found.</em></h2>
+    <div class="rescue glass reveal">
+      <svg id="rescueSvg" viewBox="0 0 1200 520" role="img" aria-label="Animation: one drone finds a stranded trekker behind a ridge; a second drone climbs to the ridge and relays the report to base"></svg>
+      <div class="rescue-caps" id="rescueCaps" aria-live="polite">
+        <span data-beat="0">1 · Drone A crosses the ridge and finds a stranded trekker.</span>
+        <span data-beat="1">2 · The ridge blocks its signal. Base can't hear it.</span>
+        <span data-beat="2">3 · Drone B climbs to the ridge line and becomes a relay.</span>
+        <span data-beat="3">4 · The report hops A → B → base. Rescue team dispatched.</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 7 · CLOSE -->
+<section class="close" id="close">
+  <div class="wrap center">
+    <p class="close-line">When the towers fall, <em>the swarm becomes the network.</em></p>
+    <div class="hero-cta center-row">
+      <a class="btn btn-primary" href="../demo/">Open the technical demo</a>
+      <a class="btn btn-glass" href="#top">Back to top</a>
+    </div>
+    <p class="foot">Ridgeline · GreatUniHack 2026 · Neptune North challenge</p>
+  </div>
+</section>
+
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js" defer></script>
+<script type="module" src="main.js"></script>
+</body>
+</html>

@@ -4,6 +4,7 @@ For GreatUniHack 2026, Neptune North challenge. Drones search mountains for miss
 
 - `recovery/`: drop-in frontend modules (no dependencies). See [recovery/README.md](recovery/README.md).
 - `demo/`: interactive demo. `sim.js` is the simulation with no DOM, `demo.js` draws it. Choose how many drones launch, fail them, paint a radio blackout, cut all radio, and watch the search graph. The graph compares this run with two unseen runs on the same terrain: one with comms on and nothing failed, one with no radio from launch.
+- `site/`: the presentation website (problem, solution, live network graph, QR code to the demo, rescue scene). It runs the real `demo/sim.js` in the graph. Open http://localhost:8080/site/ and add `?demo=http://<LAN-IP>:8080/demo/` so the QR code works on judges' phones. The brief is in `docs/presentation-brief.md`.
 - `nca/train_nca.py`: trains the network on the formation shape (PyTorch).
 - `docs/hub-recovery-plan.md`: the plan for this part and how it plugs into the team's work.
 
