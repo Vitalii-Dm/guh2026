@@ -1,6 +1,21 @@
-# Presentation site: design brief and build prompts
+# Presentation site: brief
 
-Branch: `presentation-website`. Folder: `site/`. Open at `http://localhost:8080/site/` (serve the repo root, as for the demo).
+Branch: `presentation-website`. Folder: `site/`. Open http://localhost:8080/site/ (serve the repo root).
+
+## Revision 2 (current)
+
+The first part of the pitch is short, so the page has four screens and nothing else:
+
+1. **Intro.** A real photo of the Langtang range from Dhunche, the name, one line. No buttons.
+2. **26 August 2026.** Timeline in five beats, each with a real picture that wipes in: Langtang Lirung; security-camera footage from Gyirong Port; Sentinel-2 (12 Aug) against Landsat (26 Aug), wiped by scroll; the Trishuli corridor; then the toll (1,455 dead, 5,285 missing).
+3. **What we built.** A real-time 3D scene (three.js) driven by scroll: drone A crosses the ridge, finds a person, its link to base hits the ridge, drone B climbs to the crest, and the report hops A → B → base.
+4. **The live system.** One link to `../demo/`, which the team's phone setup drives.
+
+Removed on purpose: stats tiles, solution cards, live graph, QR code, all buttons. Style: documentary, not decorative. Condensed grotesk headings (Archivo), mono metadata (IBM Plex Mono), one accent colour (signal orange), film grain, no glass or glow effects. Every image is from Wikimedia Commons and credited on the page.
+
+---
+
+## Revision 1 (superseded)
 
 There are two websites. The **presentation site** (this one) tells the story: name, problem, solution, how it works, a QR code so the judges can try it, and the rescue scene. The **technical demo** (`demo/`, built by the team) shows the full simulation, the gecko network and every number. The presentation shows the solution only in part and hands the judges over to the demo.
 
