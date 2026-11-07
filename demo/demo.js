@@ -533,7 +533,7 @@ function drawGraph() {
   tip.style.left = `${left + tip.offsetWidth > cw ? Math.max(0, X(p.tick) - tip.offsetWidth - 12) : left}px`;
 }
 graph.addEventListener('pointermove', (e) => { hoverX = e.clientX - graph.getBoundingClientRect().left; });
-graph.addEventListener('pointerleave', () => { hoverX = null; });
+graph.addEventListener('pointerleave', () => { hoverX = null; graphDirty = true; });
 
 // ---------------------------------------------------------------- NCA panel
 // The gecko network runs on the drones: each drone computes the cells nearest
@@ -672,34 +672,52 @@ $('speed').oninput = (e) => {
   $('speedV').textContent = `${simSpeed}×`;
   e.target.setAttribute('aria-valuetext', `${simSpeed} times`);
 };
-let frame = 0, lastFrame = 0, owed = 0;
+// Work budget. The simulation keeps to real time; everything drawn runs only
+// as often as it needs to, and not at all while it's off screen.
+const RENDER_MS = 1000 / 30;     // map frame rate cap
+const PANEL_MS = 200;            // stats, people table, drone panel: 5 times a second
+const NCA_RENDERS_PER_STEP = 2;  // gecko steps ~15 times a second
+const onScreenNow = new Map();
+const io = new IntersectionObserver((es) => { for (const e of es) onScreenNow.set(e.target.id, e.isIntersecting); });
+for (const id of ['nca', 'graph']) io.observe($(id));
+const onScreen = (id) => onScreenNow.get(id) !== false;
+let frame = 0, lastFrame = 0, owed = 0, lastRender = -Infinity, lastPanel = -Infinity, graphDirty = true, panelDirty = true;
 function loop(t) {
+  requestAnimationFrame(loop);
   owed += Math.min(0.1, (t - (lastFrame || t)) / 1000) * simSpeed; lastFrame = t;
+  // the comparison runs only feed the graph; once they've searched everything they stop
+  const refsDone = reference.on.coverage() === 1 && reference.off.coverage() === 1;
   for (; owed >= DT; owed -= DT) {
     const before = world.tick;
     const radioTick = world.steps % TICK_STEPS === 0;
     const nodes = radioTick && [world.base, ...world.drones.filter((d) => d.alive)];
     const pre = radioTick && msgs.before(nodes);
-    world.step(); reference.on.step(); reference.off.step();
+    world.step();
+    if (!refsDone) { reference.on.step(); reference.off.step(); }
     if (world.tick !== before) {
       msgs.after(pre, nodes.filter((n) => n === world.base || n.alive), world.links, performance.now());
-      updateStats();
-      if (world.tick % SAMPLE_TICKS === 0) sample();
+      panelDirty = true;
+      if (world.tick % SAMPLE_TICKS === 0) { sample(); graphDirty = true; }
     }
   }
+  if (panelDirty && t - lastPanel >= PANEL_MS) { lastPanel = t; panelDirty = false; updateStats(); }
+  if (t - lastRender < RENDER_MS) return;
+  lastRender = t;
   draw();
-  drawGraph();
+  if (onScreen('graph') && (graphDirty || hoverX !== null)) { graphDirty = false; drawGraph(); }
   if (nca) {
-    if (++frame % NCA_FRAMES_PER_STEP === 0) { stepNca(); watchNca(); }
-    drawNca();
-    if (frame % 15 === 0) {
+    // keep the network running so damage still heals, but only draw it when it's visible
+    if (++frame % NCA_RENDERS_PER_STEP === 0) {
+      stepNca(); watchNca();
+      if (onScreen('nca')) drawNca();
+    }
+    if (frame % 8 === 0) {
       const n = ncaPatches.slots?.length || 0;
       $('ncaSim').innerHTML = `Shape ${Math.round(nca.similarity() * 100)}% restored. ${n} drones computing, ${ncaLast.fresh} edges shared` +
         (ncaLast.stale ? `, <span style="color:#ff5a50">${ncaLast.stale} stale</span>.` : '.');
       $('ncaTitle').textContent = selected ? `Drone ${selected.id}'s copy of the network` : 'Gecko network on the drones';
     }
   }
-  requestAnimationFrame(loop);
 }
 reset();
 requestAnimationFrame(loop);

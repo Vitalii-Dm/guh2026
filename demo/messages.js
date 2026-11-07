@@ -143,5 +143,18 @@ export function createMessages() {
 
   function clear() { flights = []; flashes = []; ticks = 0; }
 
-  return { before, after, draw, clear };
+  /**
+   * What's on screen now, for renderers that draw it themselves (the 3D view).
+   * Flights: { from, to, t: 0..1, kind }. Flashes: { node, t: 0..1, kind, label, big }.
+   */
+  function active(now) {
+    flights = flights.filter((f) => now < f.start + f.dur);
+    flashes = flashes.filter((f) => now < f.start + (f.big ? 1800 : 900));
+    return {
+      flights: flights.filter((f) => now >= f.start).map((f) => ({ from: f.from, to: f.to, kind: f.kind, t: (now - f.start) / f.dur })),
+      flashes: flashes.filter((f) => now >= f.start).map((f) => ({ node: f.node, kind: f.kind, label: f.label, big: f.big, t: (now - f.start) / (f.big ? 1800 : 900) })),
+    };
+  }
+
+  return { before, after, draw, clear, active };
 }

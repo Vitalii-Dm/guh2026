@@ -4,6 +4,7 @@ For GreatUniHack 2026, Neptune North challenge. Drones search mountains for miss
 
 - `recovery/`: drop-in frontend modules (no dependencies). See [recovery/README.md](recovery/README.md).
 - `demo/`: interactive demo. `sim.js` is the simulation with no DOM, `demo.js` draws it. Choose how many drones launch, fail them, paint a radio blackout, cut all radio, and watch the search graph. The graph compares this run with two unseen runs on the same terrain: one with comms on and nothing failed, one with no radio from launch.
+- `demo3d/`: the same demo in 3D (Three.js, vendored in `demo3d/vendor/three`, MIT). It runs the same `demo/sim.js`; drag to orbit, scroll to zoom, click a drone to see its view.
 - `nca/train_nca.py`: trains the network on the formation shape (PyTorch).
 - `docs/hub-recovery-plan.md`: the plan for this part and how it plugs into the team's work.
 
@@ -12,10 +13,10 @@ For GreatUniHack 2026, Neptune North challenge. Drones search mountains for miss
 Serve the repo root, because ES modules don't load from `file://`:
 
 ```bash
-python3 -m http.server 8080
+python3 serve.py
 ```
 
-Then open http://localhost:8080/demo/
+Then open http://localhost:8080/demo/ for the 2D version or http://localhost:8080/demo3d/ for 3D.
 
 ## Retrain the network
 

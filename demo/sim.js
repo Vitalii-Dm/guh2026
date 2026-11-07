@@ -25,6 +25,19 @@ export function mulberry32(a) {
   return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
 
+/**
+ * A radio message: a copy of the shared part of a drone's state, so drones in
+ * the same JS thread never share objects. Same result as
+ * structuredClone(R.snapshot(state)), several times cheaper, and the
+ * simulation's main cost before.
+ */
+function message(state) {
+  const roster = {}, survivors = {};
+  for (const id in state.roster) roster[id] = { ...state.roster[id] };
+  for (const id in state.survivors) survivors[id] = { ...state.survivors[id] };
+  return { roster, survivors, visited: state.visited.slice(), hub: { ...state.hub }, hops: state.hops };
+}
+
 /** Cells of a strip from the bottom row up, alternating direction. */
 function serpentine(c0, c1) {
   const cells = [];
@@ -113,7 +126,7 @@ export function createSim({ seed, terrain, drones = N_DRONES, range = 190, los =
     // several hops per tick (merge-only rounds), then run the protocol step.
     if (sim.links.length) {
       for (let round = 0; round < RELAY_HOPS - 1; round++) {
-        const snaps = ns.map((n) => structuredClone(R.snapshot(n.state)));
+        const snaps = ns.map((n) => message(n.state));
         ns.forEach((n, i) => {
           const msgs = nbrs[i].map((j) => snaps[j]);
           for (const m of msgs) R.mergeInto(n.state, m);
@@ -121,7 +134,7 @@ export function createSim({ seed, terrain, drones = N_DRONES, range = 190, los =
         });
       }
     }
-    const snaps = ns.map((n) => structuredClone(R.snapshot(n.state)));
+    const snaps = ns.map((n) => message(n.state));
     const inbox = nbrs.map((js) => js.map((j) => snaps[j]));
     ns.forEach((n, i) => {
       const { hubStatus, mode, events } = R.step(n.state, inbox[i], sim.tick);
