@@ -14,7 +14,7 @@ const qrcode = await import('qrcode-generator').then((m) => m.default).catch(() 
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 // Anyone on the Wi-Fi can reach the helper, so only these folders are served.
-const PUBLIC_DIRS = new Set(['demo', 'demo3d', 'recovery']);
+const PUBLIC_DIRS = new Set(['demo', 'demo3d', 'recovery', 'site']);
 const BIG_SCREEN = '/demo/?phones=1', PHONE_PAGE = '/demo/phone.html';
 const PEER_TTL = 5000;     // ms since its last poll before a device stops being listed
 const SCREEN_TTL = 3000;   // ms since the big screen's last poll before its mission can be replaced
@@ -23,7 +23,7 @@ const RESUME_MS = 20 * 60 * 1000;  // a big screen can rejoin a mission launched
 const MAX_BODY = 64 * 1024;  // limit per request
 const MAX_QUEUE = 32;      // waiting messages kept per device
 const ID = /^[\w-]{1,32}$/;
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.json': 'application/json' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg' };
 
 function send(res, status, body, type = 'application/json') {
   res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store' });
