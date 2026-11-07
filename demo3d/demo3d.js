@@ -307,7 +307,7 @@ function drawGround(now) {
     ctx.strokeStyle = ok ? 'rgba(63,185,80,0.9)' : `rgba(255,122,89,${1 - pulse})`; ctx.lineWidth = 2.5;
     ctx.beginPath(); ctx.arc(s.x, s.y, ok ? 13 : 8 + pulse * 18, 0, Math.PI * 2); ctx.stroke();
   }
-  // under each drone: its shadow and its sensor footprint, coloured by what it hears
+  // failed drones: a red cross where they came down (live drones' footprints are drawn in 3D)
   for (const d of world.drones) {
     ctx.globalAlpha = selected && d !== selected ? 0.3 : 1;
     if (!d.alive) {
@@ -315,8 +315,6 @@ function drawGround(now) {
       ctx.beginPath(); ctx.moveTo(d.x - 9, d.y - 9); ctx.lineTo(d.x + 9, d.y + 9); ctx.moveTo(d.x + 9, d.y - 9); ctx.lineTo(d.x - 9, d.y + 9); ctx.stroke();
       continue;
     }
-    ctx.strokeStyle = d === selected ? '#ffffff' : MODE_COLOUR[d.commsMode]; ctx.lineWidth = d === selected ? 2.5 : 1.5;
-    ctx.beginPath(); ctx.arc(d.x, d.y, SENSE, 0, Math.PI * 2); ctx.stroke();
   }
   ctx.globalAlpha = 1;
 }

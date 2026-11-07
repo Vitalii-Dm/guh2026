@@ -14,6 +14,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *args):
         pass  # keep the terminal quiet
 
+    def end_headers(self):
+        # Never cache: while the demo is being changed, a stale page with a new
+        # script (or the other way round) leaves it blank.
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
 try:
     server = Server(("", port), Handler)

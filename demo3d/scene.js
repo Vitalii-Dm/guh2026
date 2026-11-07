@@ -246,6 +246,16 @@ export function createScene3D(container, { W, H, BASE }) {
   const DISCS = merged(motorAt.map(([x, z]) => [new THREE.CircleGeometry(3.9, 24).rotateX(-Math.PI / 2).translate(x, 1.15, z), [1, 1, 1]]));
   const NAV = merged([[place(new THREE.SphereGeometry(0.55, 8, 6), 6.8, -0.3, -6.8), [1, 0.2, 0.2]], [place(new THREE.SphereGeometry(0.55, 8, 6), 6.8, -0.3, 6.8), [0.2, 1, 0.35]]]);
 
+  // searchlight cone, apex at the drone, fading out before it reaches the ground
+  // (vertex colours with additive blending: darker = more transparent)
+  function fadingCone() {
+    const geo = new THREE.ConeGeometry(1, 1, 32, 6, true).translate(0, -0.5, 0);
+    const p = geo.attributes.position, col = new Float32Array(p.count * 3);
+    for (let i = 0; i < p.count; i++) { const k = Math.pow(1 + p.getY(i), 1.6); col.set([k, k, k], i * 3); }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    return geo;
+  }
+
   const inst = (geo, material, n, { shadow = false } = {}) => {
     const m = new THREE.InstancedMesh(geo, material, n);
     m.count = 0; m.frustumCulled = false; m.castShadow = shadow;
@@ -261,7 +271,7 @@ export function createScene3D(container, { W, H, BASE }) {
     nav: inst(NAV, new THREE.MeshBasicMaterial({ vertexColors: true }), MAXD),
     strobe: inst(new THREE.SphereGeometry(0.6, 8, 6).translate(0, 1.7, 0), new THREE.MeshBasicMaterial({ color: 0xffffff }), MAXD),
     // searchlight cone, apex at the drone; brightness lives in the instance colour (additive)
-    beam: inst(new THREE.ConeGeometry(1, 1, 24, 1, true).translate(0, -0.5, 0), additive({ side: THREE.DoubleSide }), MAXD),
+    beam: inst(fadingCone(), additive({ side: THREE.DoubleSide, vertexColors: true }), MAXD),
     ring: inst(new THREE.TorusGeometry(11, 0.6, 8, 48).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial(), MAXD),
     pick: inst(new THREE.SphereGeometry(12, 8, 6), new THREE.MeshBasicMaterial({ visible: false }), MAXD),
   };
@@ -330,6 +340,27 @@ export function createScene3D(container, { W, H, BASE }) {
   const blocked = new LineSegments2(new LineSegmentsGeometry(), blockedMat);
   blocked.frustumCulled = false;
   scene.add(blocked);
+  // sensor footprints: a thin dashed ring on the ground under each drone,
+  // following the slope, coloured by what the drone can hear. All drones in
+  // one fat-line mesh.
+  const footMat = new LineMaterial({ vertexColors: true, linewidth: 1.8, transparent: true, opacity: 0.95, depthWrite: false });
+  const foot = new LineSegments2(new LineSegmentsGeometry(), footMat);
+  foot.frustumCulled = false;
+  scene.add(foot);
+  const RING_N = 40;
+  function setColouredSegments(mesh, pos, col) {
+    const cap = mesh.userData.cap || 0, n = pos.length / 6;
+    if (n > cap) {
+      const size = Math.max(64, 1 << Math.ceil(Math.log2(n)));
+      mesh.geometry.dispose();
+      mesh.geometry = new LineSegmentsGeometry().setPositions(new Float32Array(size * 6)).setColors(new Float32Array(size * 6));
+      mesh.userData.cap = size;
+    }
+    const pb = mesh.geometry.attributes.instanceStart.data, cb = mesh.geometry.attributes.instanceColorStart.data;
+    pb.array.fill(0); pb.array.set(pos); pb.needsUpdate = true;
+    cb.array.fill(0); cb.array.set(col); cb.needsUpdate = true;
+    mesh.geometry.instanceCount = n;
+  }
 
   // Update a fat-line mesh in place. Its GPU buffer is only reallocated when
   // there are more segments than it has room for.
@@ -419,7 +450,7 @@ export function createScene3D(container, { W, H, BASE }) {
       if (d.alive) {
         const fly = pos.y - g0;
         L.compose(pos, Q, S.set(SENSE, fly, SENSE));
-        setI(D.beam, i, L, C.setHex(MODE_GLOW[d.commsMode] ?? 0x9fe8ff).multiplyScalar((d === selected ? 0.22 : 0.12) * dim));
+        setI(D.beam, i, L, C.setHex(MODE_GLOW[d.commsMode] ?? 0x9fe8ff).multiplyScalar((d === selected ? 0.2 : 0.1) * dim));
       } else setI(D.beam, i, ZERO, C.setScalar(0));
       // line from the drone to the ground: shows how high it is
       st.set(d.alive ? [pos.x, pos.y, pos.z, pos.x, g0, pos.z] : [0, -999, 0, 0, -999, 0], i * 6);
@@ -432,6 +463,24 @@ export function createScene3D(container, { W, H, BASE }) {
         : `<span class="dead">${d.id} down</span>`);
       if (tag.userData.dim !== dim) { tag.userData.dim = dim; tag.element.style.opacity = dim; }
     }
+    // footprints: dashes of 3 segments on, 1 off, round each live drone
+    const fp = [], fc = [];
+    for (let i = 0; i < n; i++) {
+      const d = world.drones[i];
+      if (!d.alive) continue;
+      const dim = selected && d !== selected ? 0.3 : 1;
+      C.setHex(d === selected ? 0xffffff : MODE_GLOW[d.commsMode] ?? 0x9fe8ff).multiplyScalar(dim);
+      let prev = null;
+      for (let k = 0; k <= RING_N; k++) {
+        const a = (k / RING_N) * Math.PI * 2 + now / 4000;            // a slow turn, like a scanning reticle
+        const x = d.x + Math.cos(a) * SENSE, y = d.y + Math.sin(a) * SENSE;
+        const pt = [x - W / 2, ground(x, y) + 0.9, y - H / 2];
+        if (prev && k % 4 !== 0) { fp.push(...prev, ...pt); fc.push(C.r, C.g, C.b, C.r, C.g, C.b); }
+        prev = pt;
+      }
+    }
+    setColouredSegments(foot, fp.length ? fp : [0, -999, 0, 0, -999, 0], fc.length ? fc : [0, 0, 0, 0, 0, 0]);
+
     stalkGeo.setDrawRange(0, n * 2);
     stalkGeo.attributes.position.needsUpdate = true;
     done(...Object.values(D));
@@ -536,7 +585,7 @@ export function createScene3D(container, { W, H, BASE }) {
     renderer.domElement.style.width = '100%'; renderer.domElement.style.height = '100%';
     labels.setSize(w, h);
     camera.aspect = w / h; camera.updateProjectionMatrix();
-    for (const m of [linkMat, blockedMat]) m.resolution.set(w, h);
+    for (const m of [linkMat, blockedMat, footMat]) m.resolution.set(w, h);
   }
   new ResizeObserver(resize).observe(container);
   resize();
