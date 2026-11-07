@@ -1,6 +1,6 @@
 # Swarm demo: data inventory for the frontend
 
-This lists everything the demo tracks and shows, so the layout can be rebuilt without changing the simulation. The page title, the gecko card and Formation mode stay as they are.
+This lists everything the demo tracks and shows, so the layout can be rebuilt without changing the simulation. The gecko card and Formation mode stay as they are. There is no page heading; the toolbar is the top of the page, and the map is sized to fill the window below it.
 
 All the display code is in `demo/demo.js`. The simulation is `demo/sim.js`, and each drone's memory is the state in `recovery/swarm-recovery.js`. In the code, `world` is the run on screen and `d` is a drone.
 
@@ -60,6 +60,8 @@ Timing: the simulation ticks every 160 ms and the numbers refresh on each tick (
 
 Clicking a drone opens a panel and switches the map to that drone's view. Escape, "Back to full view" or clicking empty map leaves it.
 
+In that view the ground it knows is painted by source: solid in its own colour (white outline) where it searched itself, lighter in another drone's colour where that drone searched it and the news reached this one. Ground searched by a drone that's down is grey. Its home strip is outlined dashed. The panel's "Where its map came from" list gives the same split as shares of the map. Read it from `d.own` (cells it searched itself) and `world.searchedBy` (first drone to search each cell). Both are display-only and aren't sent by radio: a real drone knows a cell is searched, not who searched it.
+
 | Row | Meaning | Read it from |
 |---|---|---|
 | Doing | Its current job, in plain words | `d.task` |
@@ -81,26 +83,18 @@ What changes on the map in this view:
 
 Other drones stay at their real positions in this view, although a drone doesn't actually know them. Positions aren't sent over radio, so a stricter view could hide them.
 
-## Who knows what grid
+## Who knows about each person
 
-The grid shows, for base and every launched drone, what it knows about each of the 7 people. It uses each copy's `state.survivors[personId]`.
+Below the map. One row per person who has been found; people not found yet are listed underneath ("Not found yet: person 1, person 4"), from `world.survivors` where `foundBy` is null.
 
-| Cell | Meaning |
-|---|---|
-| Empty | Doesn't know about this person |
-| Orange ● | Knows, and doesn't know whether base has it |
-| Green ✓ | Knows, and knows base has it |
+| Column | Meaning | Read it from |
+|---|---|---|
+| Person 3 | The person | `survivor.id` |
+| Base | Green ✓ when base has the report, empty when it hasn't heard | `world.base.state.survivors[id]` |
+| 1 to 9 | One per launched drone. Filled in that drone's colour when it knows about the person, empty when it doesn't. ★ marks the drone that found them. A failed drone's column is faded and struck through | `drone.state.survivors[id]`, `survivor.foundBy` |
+| 6/9 | Live drones that know, out of live drones | |
 
-Rows are clickable and select that drone. A failed drone's row is struck through. Below the grid, "Drones know 22% of what's been found" comes from `world.agreement()`: of all live drone and found person pairs, the share where the drone holds the report. It leaves out base and failed drones.
-
-Why it's hard to read:
-
-- **An empty cell has two meanings.** It can be "this drone hasn't heard" or "nobody has found this person yet". Both look the same.
-- **✓ is second-hand.** A drone without ✓ doesn't mean base lacks the report. Only the Base row answers that.
-- **The columns mean nothing to a viewer.** People are just numbered 1 to 7.
-- **It's up to 16 rows by 7 columns of very small text** (15 drones plus base), sitting on top of the map.
-
-It tries to answer three questions at once: which reports reached base, who is out of date, and how far the swarm disagrees. The same data can be cut per person instead: found by whom, at base or not, and how many live drones know.
+The column headers carry each drone's colour, and clicking a header or cell selects that drone. This replaces the old drones-by-people grid, which used one empty cell for both "hasn't heard" and "nobody found this person yet".
 
 ## Search progress graph
 
@@ -113,7 +107,7 @@ It tries to answer three questions at once: which reports reached base, who is o
 
 The vertical markers are `hub failed`, `drone N failed`, `blackout`, `blackout lifted`, `radio cut` and `radio back`. Each legend row shows the latest value, and hovering gives all four at that moment. The data is in `history` and `marks`. In Formation mode the comparison runs keep searching, so the lines stop being comparable.
 
-## Events log
+## Field log (events)
 
 It shows the newest 40, each with a time in seconds. Messages contain HTML (`<b>`).
 
@@ -121,16 +115,16 @@ It shows the newest 40, each with a time in seconds. Messages contain HTML (`<b>
 |---|---|
 | Launch | Swarm launched over terrain #2026: 9 drones, drone 1 is the hub, 7 missing people |
 | Person found | Person s3 found by drone 4 |
-| Person found again | Person s3 found again by drone 6 — the first report was lost |
-| Report delivered | Report for person s3 reached base — rescue team dispatched |
-| Drone failed | Drone 2 failed — it was the hub |
-| Hub takeover | Drone 3 took over as hub (epoch1) — lowest live id it can reach |
-| Hub suspect | Drone 5: no word from hub 1 for 5 s — hub suspect |
-| Marked failed | Drone 4 has heard nothing of drone 2 for 14 s — treating it as failed |
-| Carrying a report | Drone 6 has no route to base — flying report s3 back (data mule) |
+| Person found again | Person s3 found again by drone 6. The first report was lost. |
+| Report delivered | Report for person s3 reached base. Rescue team dispatched. |
+| Drone failed | Drone 2 failed. It was the hub. |
+| Hub takeover | Drone 3 took over as hub (epoch1), the lowest live id it can reach |
+| Hub suspect | Drone 5: no word from hub 1 for 5 s, hub suspect |
+| Marked failed | Drone 4 has heard nothing of drone 2 for 14 s and treats it as failed |
+| Carrying a report | Drone 6 has no route to base, so it's flying report s3 back itself (data mule) |
 | Carrying failed | Drone 6 can't reach base even from here — back to searching, will retry |
 | Hub already down | The hub is already down — no drone has taken over yet |
-| Gecko regrow | Formation panel: damage too close to the seed — regrowing from one cell |
+| Gecko regrow | Gecko panel: the damage reached the seed cell, so it regrows from one cell |
 
 People are named three ways: `s3` in the log and drone panel, `3` in the grid, and "Person s3" in sentences. One name throughout would help.
 
@@ -141,7 +135,7 @@ People are named three ways: `s3` in the log and drone panel, `3` in the grid, a
 | Image | The self-repairing V. Failing a drone or clicking the image erases part of it | `nca.draw()`, or `nca.draw(ctx, bg, nca.views.get(id))` for a selected drone's copy |
 | Tinted patches, id badges | Which drone computes which cells | `nca.assignOwners()` |
 | White / red dashed borders | Edge cells swapped by radio / neighbour out of reach, using an old copy | `stepSwarm()` returns `{ fresh, stale }` |
-| shape 100% · 9 drones computing · 59 edges shared · 8 stale | Shape match, patch count, border counts | `nca.similarity()`, `stepSwarm()` |
+| Shape 100% restored. 9 drones computing, 59 edges shared, 8 stale. | Shape match, patch count, border counts | `nca.similarity()`, `stepSwarm()` |
 
 Map extras: dots along links (orange found person, green base has it, gold new hub, small blue searched map), rings as news reaches each drone, and "k/n drones know" under each found person. All from `demo/messages.js`.
 
@@ -189,3 +183,19 @@ These would need a small simulation change before they could be shown.
 | Radio range (px) | Slider, 40 to 320, default 190 | Applies live |
 | Ridges block radio | Checkbox, default on | Applies live |
 | Regrow from one cell | Button on the gecko card | Restarts the gecko |
+
+## Phone mode
+
+`demo/?phones=1` runs some drones on phones. The layout gains a Phones card, and these values change meaning:
+
+| Value | Change in phone mode | Read it from |
+|---|---|---|
+| Phones card | QR code, join address, which drones are linked, and the Launch button | `/qr.svg`, `/mission` |
+| Dashed ring, "PHONE" | This drone is flown by a phone. Red, "PHONE: NO CONTACT", when its connection is lost | `d.remote`, `d.inContact` |
+| Reality | The laptop can't see a phone offline, so `world.truthVisited`, `s.foundBy` and a phone drone's position mean "everything received so far". The map fills in when a phone reconnects | `world.truthVisited` |
+| One drone's copy, for a phone drone | What that phone last said, not live. It freezes during an outage | `d.state` |
+| Graph | Shows this run only: the two comparison runs can't include a phone, so `reference` is null | `reference` |
+| Drones slider | Starts a new mission, and the phones rejoin by themselves | `?drones=` |
+| Reset, New terrain | Start a new mission in the same way | `?seed=` |
+| Fail buttons | Skip phone drones, which are failed with aeroplane mode on the phone | `d.remote` |
+

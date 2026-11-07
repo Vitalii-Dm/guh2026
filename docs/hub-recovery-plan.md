@@ -77,7 +77,7 @@ The hub role doesn't change any drone's behaviour. Search, reports and mules all
 
 ### Seeing what each drone knows
 
-Click a drone and the map shows only its private copy: the ground it knows is searched and the people it knows about. Its panel compares that with reality. The "Who knows what" grid shows the same for every drone at once. In a blackout the drones disagree and the grid turns patchy; it fills in when they reconnect. Nothing a drone decides reads the full map, so this view is what it actually acts on.
+Click a drone and the map shows only its private copy: the ground it knows is searched and the people it knows about. That ground is painted solid in the drone's colour where it searched itself, and in the finder's colour where another drone searched it and told it, so you can see each drone's share of the work and what it got from the others. Who searched a cell is tracked by the simulation for this view only; the radio message just says the cell is searched. Its panel compares that with reality. The "Who knows about each person" table below the map shows, for every found person, which drones and whether base know about them. In a blackout the drones disagree and the rows turn patchy; they fill in when the drones reconnect. Nothing a drone decides reads the full map, so this view is what it actually acts on.
 
 ### Limits (for judge questions)
 
