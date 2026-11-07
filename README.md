@@ -5,6 +5,7 @@ For GreatUniHack 2026, Neptune North challenge. Drones search mountains for miss
 - `recovery/`: drop-in frontend modules (no dependencies). See [recovery/README.md](recovery/README.md).
 - `demo/`: interactive demo. `drone.js` is what one drone does, `sim.js` is the simulation with no DOM, `demo.js` draws it. Choose how many drones launch, fail them, paint a radio blackout, cut all radio, and watch the search graph. The graph compares this run with two unseen runs on the same terrain: one with comms on and nothing failed, one with no radio from launch.
 - `demo3d/`: the same demo in 3D (Three.js, vendored in `demo3d/vendor/three`, MIT). It runs the same `demo/sim.js`; drag to orbit, scroll to zoom, click a drone to see its view.
+- `site/`: the presentation website: intro, the 26 August 2026 Langtang timeline with real photos, a scroll-driven 3D rescue scene (three.js), a link to the demo, and four real-world applications. Open http://localhost:8080/site/. Brief: `docs/presentation-brief.md`.
 - `nca/train_nca.py`: trains the network on the formation shape (PyTorch).
 - `demo/phone.html`: a page that turns an iPhone into one of the drones. `phone-drone.js` flies it, `net.js` links devices directly, `phone-link.js` is the big screen's side, `mission.js` holds what every device must agree on, and `phone-server.mjs` is the helper. See [Run with phones](#run-with-phones).
 - `docs/hub-recovery-plan.md`: the plan for this part and how it plugs into the team's work.
