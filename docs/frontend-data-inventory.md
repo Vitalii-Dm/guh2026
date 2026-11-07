@@ -1,6 +1,6 @@
 # Swarm demo: data inventory for the frontend
 
-This lists everything the demo tracks and shows, so the layout can be rebuilt without changing the simulation. The page title, the gecko card and Formation mode stay as they are.
+This lists everything the demo tracks and shows, so the layout can be rebuilt without changing the simulation. The gecko card and Formation mode stay as they are. There is no page heading; the toolbar is the top of the page, and the map is sized to fill the window below it.
 
 All the display code is in `demo/demo.js`. The simulation is `demo/sim.js`, and each drone's memory is the state in `recovery/swarm-recovery.js`. In the code, `world` is the run on screen and `d` is a drone.
 
@@ -83,26 +83,18 @@ What changes on the map in this view:
 
 Other drones stay at their real positions in this view, although a drone doesn't actually know them. Positions aren't sent over radio, so a stricter view could hide them.
 
-## Who knows what grid
+## Who knows about each person
 
-The grid shows, for base and every launched drone, what it knows about each of the 7 people. It uses each copy's `state.survivors[personId]`.
+Below the map. One row per person who has been found; people not found yet are listed underneath ("Not found yet: person 1, person 4"), from `world.survivors` where `foundBy` is null.
 
-| Cell | Meaning |
-|---|---|
-| Empty | Doesn't know about this person |
-| Orange ● | Knows, and doesn't know whether base has it |
-| Green ✓ | Knows, and knows base has it |
+| Column | Meaning | Read it from |
+|---|---|---|
+| Person 3 | The person | `survivor.id` |
+| Base | Green ✓ when base has the report, empty when it hasn't heard | `world.base.state.survivors[id]` |
+| 1 to 9 | One per launched drone. Filled in that drone's colour when it knows about the person, empty when it doesn't. ★ marks the drone that found them. A failed drone's column is faded and struck through | `drone.state.survivors[id]`, `survivor.foundBy` |
+| 6/9 | Live drones that know, out of live drones | |
 
-Rows are clickable and select that drone. A failed drone's row is struck through. Below the grid, "Drones know 22% of what's been found" comes from `world.agreement()`: of all live drone and found person pairs, the share where the drone holds the report. It leaves out base and failed drones.
-
-Why it's hard to read:
-
-- **An empty cell has two meanings.** It can be "this drone hasn't heard" or "nobody has found this person yet". Both look the same.
-- **✓ is second-hand.** A drone without ✓ doesn't mean base lacks the report. Only the Base row answers that.
-- **The columns mean nothing to a viewer.** People are just numbered 1 to 7.
-- **It's up to 16 rows by 7 columns of very small text** (15 drones plus base), sitting on top of the map.
-
-It tries to answer three questions at once: which reports reached base, who is out of date, and how far the swarm disagrees. The same data can be cut per person instead: found by whom, at base or not, and how many live drones know.
+The column headers carry each drone's colour, and clicking a header or cell selects that drone. This replaces the old drones-by-people grid, which used one empty cell for both "hasn't heard" and "nobody found this person yet".
 
 ## Search progress graph
 

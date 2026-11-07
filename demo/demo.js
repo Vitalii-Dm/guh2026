@@ -16,6 +16,8 @@ const SECONDS_PER_TICK = 0.16;
 const NCA_FRAMES_PER_STEP = 4;  // slow enough to watch the gecko repair
 const MODE_COLOUR = { hub: '#2bb3a8', neighbours: '#f29e4c', alone: '#e5534b' };
 const $ = (id) => document.getElementById(id);
+// Let the map fill the window below the toolbar, however many rows it wraps to.
+new ResizeObserver(([e]) => document.documentElement.style.setProperty('--bar', `${e.target.offsetHeight}px`)).observe(document.querySelector('header'));
 
 // `world` is the run on screen. The two reference runs share its terrain and
 // survivors and play alongside it, unseen, for the graph to compare against.
@@ -34,7 +36,6 @@ function reset() {
   const los = $('los').checked;
   const drones = +$('drones').value;
   $('dronesV').textContent = drones;
-  $('introDrones').textContent = drones;
   $('seedV').textContent = terrainSeed;
   world = createSim({ seed: terrainSeed, terrain, drones, range, los, onLog: log });
   world.mode = mode;
@@ -83,14 +84,11 @@ function mapPoint(e) {
 function setPainting(on) {
   painting = on;
   $('paint').classList.toggle('on', on);
-  $('hint').textContent = on ? 'Drag to paint a radio blackout' : 'Click a drone to see what it knows';
 }
 
 function select(d) {
   selected = d;
   $('droneCard').hidden = !d;
-  $('viewBanner').hidden = !d;
-  if (d) $('viewBanner').innerHTML = `Drone ${d.id}'s view. Solid: ground it searched itself. Faint: ground another drone searched and told it about, in that drone's colour.`;
   updateDronePanel();
   updateGrid();
 }
@@ -126,7 +124,7 @@ $('failSelected').onclick = () => fail(selected);
 $('closeView').onclick = () => select(null);
 window.addEventListener('keydown', (e) => { if (e.key === 'Escape') select(null); });
 $('knowGrid').addEventListener('pointerdown', (e) => {
-  const id = Number(e.target.closest('tr')?.dataset.id);
+  const id = Number(e.target.closest('[data-id]')?.dataset.id);
   const d = world.drones.find((x) => x.id === id && x.alive);
   if (d) select(d === selected ? null : d);
 });
@@ -405,16 +403,27 @@ function updateDronePanel() {
 }
 
 function updateGrid() {
-  const share = world.agreement();
-  $('agreement').textContent = share === null ? '' : `Drones know ${Math.round(share * 100)}% of what's been found`;
-  const row = (label, state, attrs = '') => `<tr ${attrs}><th scope="row">${label}</th>${world.survivors.map((p) => {
-    const r = state.survivors[p.id];
-    if (!r) return '<td title="doesn\'t know"></td>';
-    return r.delivered ? '<td class="sent" title="knows, and knows base has it">✓</td>' : '<td class="known" title="knows, base not confirmed">●</td>';
-  }).join('')}</tr>`;
-  const head = `<tr><th></th>${world.survivors.map((p) => `<th scope="col" title="Person ${p.id}">${p.id.slice(1)}</th>`).join('')}</tr>`;
-  const drones = world.drones.map((d) => row(`D${d.id}`, d.state, `data-id="${d.id}" class="${[d === selected && 'on', !d.alive && 'down'].filter(Boolean).join(' ')}"`));
-  $('knowGrid').innerHTML = head + row('Base', world.base.state, 'class="base"') + drones.join('');
+  // One row per found person: which drones know about them, and whether base does.
+  const live = world.drones.filter((d) => d.alive);
+  const css = (id) => { const [r, g, b] = droneRgb(id); return `rgb(${r | 0},${g | 0},${b | 0})`; };
+  const found = world.survivors.filter((p) => p.foundBy);
+  const waiting = world.survivors.filter((p) => !p.foundBy).map((p) => p.id.slice(1));
+  const cls = (d) => [d === selected && 'on', !d.alive && 'down'].filter(Boolean).join(' ');
+  const head = `<tr><th></th><th scope="col" class="basecol">Base</th>${world.drones.map((d) =>
+    `<th scope="col" data-id="${d.id}" class="${cls(d)}" title="Drone ${d.id}${d.alive ? '' : ' (down)'}"><span style="border-color:${css(d.id)}">${d.id}</span></th>`).join('')}<th></th></tr>`;
+  const rows = found.map((p) => {
+    const atBase = !!world.base.state.survivors[p.id];
+    const knowing = live.filter((d) => d.state.survivors[p.id]).length;
+    return `<tr><th scope="row">Person ${p.id.slice(1)}</th>` +
+      `<td class="basecol ${atBase ? 'yes' : ''}" title="${atBase ? 'Base has the report' : 'Base hasn\'t heard yet'}">${atBase ? '✓' : ''}</td>` +
+      world.drones.map((d) => {
+        const knows = d.alive && d.state.survivors[p.id];
+        return `<td data-id="${d.id}" class="${cls(d)}" ${knows ? `style="background:${css(d.id)}"` : ''} title="Drone ${d.id} ${knows ? 'knows' : 'doesn\'t know'}${p.foundBy === d.id ? ', found this person' : ''}">${p.foundBy === d.id ? '★' : ''}</td>`;
+      }).join('') +
+      `<td class="count">${knowing}/${live.length}</td></tr>`;
+  }).join('');
+  $('knowGrid').innerHTML = head + (rows || `<tr><td class="empty" colspan="${world.drones.length + 3}">No one found yet</td></tr>`);
+  $('agreement').textContent = waiting.length ? `Not found yet: ${waiting.map((n) => `person ${n}`).join(', ')}` : 'Everyone has been found';
 }
 
 // ---------------------------------------------------------------- stats
@@ -654,9 +663,18 @@ ncaCanvas.addEventListener('click', (e) => {
 $('ncaReset').onclick = () => { if (nca) nca.reset(); ncaWatch = null; };
 
 // ---------------------------------------------------------------- loop
+// Speed slider: runs more or fewer fixed sim steps per second, so a run
+// plays out the same at any speed, just faster or slower.
+const SPEEDS = [0.25, 0.5, 1, 2, 4];
+let simSpeed = 1;
+$('speed').oninput = (e) => {
+  simSpeed = SPEEDS[+e.target.value];
+  $('speedV').textContent = `${simSpeed}×`;
+  e.target.setAttribute('aria-valuetext', `${simSpeed} times`);
+};
 let frame = 0, lastFrame = 0, owed = 0;
 function loop(t) {
-  owed += Math.min(0.1, (t - (lastFrame || t)) / 1000); lastFrame = t;
+  owed += Math.min(0.1, (t - (lastFrame || t)) / 1000) * simSpeed; lastFrame = t;
   for (; owed >= DT; owed -= DT) {
     const before = world.tick;
     const radioTick = world.steps % TICK_STEPS === 0;
@@ -678,7 +696,7 @@ function loop(t) {
       const n = ncaPatches.slots?.length || 0;
       $('ncaSim').innerHTML = `Shape ${Math.round(nca.similarity() * 100)}% restored. ${n} drones computing, ${ncaLast.fresh} edges shared` +
         (ncaLast.stale ? `, <span style="color:#ff5a50">${ncaLast.stale} stale</span>.` : '.');
-      $('ncaTitle').textContent = selected ? `Drone ${selected.id}'s copy of the network` : 'The gecko network, running on the drones';
+      $('ncaTitle').textContent = selected ? `Drone ${selected.id}'s copy of the network` : 'Gecko network on the drones';
     }
   }
   requestAnimationFrame(loop);
