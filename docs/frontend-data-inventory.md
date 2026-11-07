@@ -1,6 +1,6 @@
 # Swarm demo: data inventory for the frontend
 
-This lists everything the demo tracks and shows, so the layout can be rebuilt without changing the simulation. The gecko card and Formation mode stay as they are. There is no page heading; the toolbar is the top of the page, and the map is sized to fill the window below it.
+This lists everything the demo tracks and shows, so the layout can be rebuilt without changing the simulation. The cellular automaton card and Formation mode stay as they are. There is no page heading; the toolbar is the top of the page, and the map is sized to fill the window below it.
 
 All the display code is in `demo/demo.js`. The simulation is `demo/sim.js`, and each drone's memory is the state in `recovery/swarm-recovery.js`. In the code, `world` is the run on screen and `d` is a drone.
 
@@ -124,11 +124,11 @@ It shows the newest 40, each with a time in seconds. Messages contain HTML (`<b>
 | Carrying a report | Drone 6 has no route to base, so it's flying report s3 back itself (data mule) |
 | Carrying failed | Drone 6 can't reach base even from here. Back to searching; it will retry later. |
 | Hub already down | The hub is already down and no drone has taken over yet |
-| Gecko regrow | Gecko panel: the damage reached the seed cell, so it regrows from one cell |
+| NCA regrow | Cellular automaton: the damage reached the seed cell, so it regrows from one cell |
 
 People are named three ways: `s3` in the log and drone panel, `3` in the grid, and "Person s3" in sentences. One name throughout would help.
 
-## Gecko panel
+## Cellular automaton panel
 
 | Shown as | Meaning | Read it from |
 |---|---|---|
@@ -183,7 +183,7 @@ These would need a small simulation change before they could be shown.
 | Drones | Slider, 3 to 15, default 9 (15 in phone mode) | Restarts the run |
 | Range, px | Slider, 40 to 320, default 190 | Applies live |
 | Ridges block it | Checkbox, default on | Applies live |
-| Regrow from one cell | Button on the gecko card | Restarts the gecko |
+| Regrow from one cell | Button on the cellular automaton card | Restarts the automaton |
 
 ## Phone mode
 

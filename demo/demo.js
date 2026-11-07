@@ -16,7 +16,7 @@ const MAP_CTX = ctx;              // the 2D map; the 3D view draws its ground ma
 const BRUSH = 60;               // blackout brush radius, px
 const SAMPLE_TICKS = 4;         // ticks between graph samples
 const SECONDS_PER_TICK = 0.16;
-const NCA_FRAMES_PER_STEP = 4;  // slow enough to watch the gecko repair
+const NCA_FRAMES_PER_STEP = 4;  // slow enough to watch the formation repair
 const MODE_COLOUR = { hub: '#2bb3a8', neighbours: '#f29e4c', alone: '#e5534b' };
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -605,7 +605,7 @@ graph.addEventListener('pointermove', (e) => { hoverX = e.clientX - graph.getBou
 graph.addEventListener('pointerleave', () => { hoverX = null; graphDirty = true; });
 
 // ---------------------------------------------------------------- NCA panel
-// The gecko network runs on the drones: each drone computes the cells nearest
+// The neural cellular automaton runs on the drones: each drone computes the cells nearest
 // its place in the V, and gets the edge cells it needs from the drones it can
 // reach by radio. A drone that can't reach a neighbour keeps using the last
 // copy it received (stale).
@@ -613,7 +613,7 @@ let nca = null;
 let ncaOwners = null, ncaKey = '', ncaGroup = new Map(), ncaLast = { fresh: 0, stale: 0 };
 let ncaActivity = null;           // how much each cell changed in the last step
 // Safety net: if the shape hasn't recovered ~7 s after damage, regrow it
-// from one cell (this is how the gecko starts too).
+// from one cell (this is how Google's growing NCA starts too).
 const NCA_GIVE_UP = 420, NCA_OK = 0.93;
 let ncaWatch = null;
 function damageNca(gx, gy) {
@@ -626,7 +626,7 @@ function watchNca() {
   if (ncaWatch % 30 === 0 && nca.similarity() >= NCA_OK) { ncaWatch = null; return; }
   if (ncaWatch > NCA_GIVE_UP) {
     nca.reset(); ncaWatch = null;
-    log('Gecko panel: the damage reached the seed cell, so it regrows from one cell');
+    log('Cellular automaton: the damage reached the seed cell, so it regrows from one cell');
   }
 }
 
@@ -898,7 +898,7 @@ $('speed').oninput = (e) => {
 // as often as it needs to, and not at all while it's off screen.
 const RENDER_MS = 1000 / 30;     // map frame rate cap
 const PANEL_MS = 200;            // stats, people table, drone panel: 5 times a second
-const NCA_RENDERS_PER_STEP = 2;  // gecko steps ~15 times a second
+const NCA_RENDERS_PER_STEP = 2;  // NCA steps ~15 times a second
 const onScreenNow = new Map();
 const io = new IntersectionObserver((es) => { for (const e of es) onScreenNow.set(e.target.id, e.isIntersecting); });
 for (const id of ['nca', 'graph']) io.observe($(id));
@@ -951,7 +951,7 @@ function loop(t) {
       const n = ncaPatches.slots?.length || 0;
       $('ncaSim').innerHTML = `Shape ${Math.round(nca.similarity() * 100)}% restored. ${n} drones computing, ${ncaLast.fresh} edges shared` +
         (ncaLast.stale ? `, <span style="color:#ff5a50">${ncaLast.stale} stale</span>.` : '.');
-      $('ncaTitle').textContent = selected ? `Drone ${selected.id}'s copy of the network` : 'Gecko network on the drones';
+      $('ncaTitle').textContent = selected ? `Drone ${selected.id}'s copy of the network` : 'Neural cellular automaton on the drones';
     }
   }
 }

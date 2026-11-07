@@ -5,7 +5,7 @@ Two plain ES modules, no dependencies, no build step. Drop this folder into the 
 | File | Size | What it is |
 |---|---|---|
 | `swarm-recovery.js` | light | Shared swarm state, merge, hub takeover, hop counts, comms modes, home strips, formation slots |
-| `nca-runtime.js` | light | Runs the trained "gecko" network in the browser (plain JS) |
+| `nca-runtime.js` | light | Runs the trained neural cellular automaton in the browser (plain JS) |
 | `models/formation-nca.json` | ~100 KB | Trained weights. To rebuild, see "Retrain the network" in the [main README](../README.md) |
 
 ## Use in the simulation (each tick)
@@ -33,7 +33,7 @@ R.isHub(drone.state);                       // draw the hub ring
 
 `snapshot(state)` is plain JSON. Put it in the radio message as-is. Clone it if you deliver in the same JS thread, so drones don't share objects.
 
-## Gecko panel
+## Cellular automaton panel
 
 ```js
 import { NCA } from './recovery/nca-runtime.js';
