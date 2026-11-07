@@ -3,7 +3,10 @@
 import * as R from '../recovery/swarm-recovery.js';
 import { NCA } from '../recovery/nca-runtime.js';
 import { makeTerrain } from './terrain.js';
-import { W, H, CELL, COLS, ROWS, N_SURVIVORS, SENSE, BASE, DT, createSim } from './sim.js';
+import { createMessages } from './messages.js';
+import { W, H, CELL, COLS, ROWS, N_SURVIVORS, SENSE, BASE, DT, TICK_STEPS, createSim } from './sim.js';
+
+const msgs = createMessages();
 
 const canvas = document.getElementById('map');
 const ctx = canvas.getContext('2d');
@@ -47,8 +50,10 @@ function reset() {
   $('log').innerHTML = '';
   select(null);
   log(`Swarm launched over terrain #${terrainSeed}: ${drones} drones, drone 1 is the hub, ${N_SURVIVORS} missing people`);
+  msgs.clear();
   if (nca) nca.reset();
   ncaWatch = null;
+  ncaOwners = null;
 }
 
 // ---------------------------------------------------------------- log
@@ -256,6 +261,12 @@ function draw() {
     drawPerson(s.x, s.y + 1, col, s.pose);
     ctx.font = '700 9px system-ui'; ctx.fillStyle = col;
     ctx.fillText(ok ? 'REPORTED' : 'SOS', s.x, s.y - 17);
+    if (!selected) {
+      const knowing = live.filter((d) => d.state.survivors[s.id]).length;
+      ctx.font = '600 9px system-ui'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(4,10,20,0.85)';
+      const t = `${knowing}/${live.length} drones know`;
+      ctx.strokeText(t, s.x, s.y + 24); ctx.fillStyle = '#e6edf3'; ctx.fillText(t, s.x, s.y + 24);
+    }
   }
   // wrecks: dimmed in a drone's view, as it can't see where the others are
   ctx.globalAlpha = selected ? 0.3 : 1;
@@ -289,6 +300,8 @@ function draw() {
     if (d.muling) { ctx.fillStyle = '#ff7a59'; ctx.font = '600 10px system-ui'; ctx.fillText('carrying report', d.x, d.y + 33); }
   }
   ctx.globalAlpha = 1;
+  // messages in flight, and rings where news lands
+  msgs.draw(ctx, now, (n) => !selected || n === selected);
 }
 
 // ---------------------------------------------------------------- what each drone knows
@@ -436,7 +449,13 @@ graph.addEventListener('pointermove', (e) => { hoverX = e.clientX - graph.getBou
 graph.addEventListener('pointerleave', () => { hoverX = null; });
 
 // ---------------------------------------------------------------- NCA panel
+// The gecko network runs on the drones: each drone computes the cells nearest
+// its place in the V, and gets the edge cells it needs from the drones it can
+// reach by radio. A drone that can't reach a neighbour keeps using the last
+// copy it received (stale).
 let nca = null;
+let ncaOwners = null, ncaKey = '', ncaGroup = new Map(), ncaLast = { fresh: 0, stale: 0 };
+let ncaActivity = null;           // how much each cell changed in the last step
 // Safety net: if the shape hasn't recovered ~7 s after damage, regrow it
 // from one cell (this is how the gecko starts too).
 const NCA_GIVE_UP = 420, NCA_OK = 0.93;
@@ -454,6 +473,96 @@ function watchNca() {
     log('Formation panel: damage too close to the seed — regrowing from one cell');
   }
 }
+
+/** Patches: each live drone owns the cells nearest its formation slot. */
+function ncaPatches() {
+  const live = world.drones.filter((d) => d.alive).map((d) => d.id).sort((a, b) => a - b);
+  const key = live.join(',');
+  if (key !== ncaKey || !ncaOwners) {
+    ncaKey = key;
+    const slots = R.formationSlots(live.length, R.FORMATION_POLYLINE);
+    ncaPatches.slots = live.map((id, i) => ({ id, gx: slots[i][0] * nca.N, gy: slots[i][1] * nca.N }));
+    ncaOwners = live.length ? nca.assignOwners(ncaPatches.slots) : null;
+  }
+  // who can reach whom right now, relays (and base) included
+  const parent = new Map();
+  const find = (n) => { while (parent.get(n) !== n) n = parent.get(n); return n; };
+  for (const n of [world.base, ...world.drones]) parent.set(n, n);
+  for (const [a, b] of world.links) parent.set(find(a), find(b));
+  ncaGroup = new Map(world.drones.filter((d) => d.alive).map((d) => [d.id, find(d)]));
+}
+
+function stepNca() {
+  ncaPatches();
+  if (!ncaOwners) return;
+  const C = nca.C;
+  ncaLast = nca.stepSwarm(ncaOwners, ncaGroup);
+  const now = nca.x, was = nca.next;
+  if (!ncaActivity) ncaActivity = new Float32Array(nca.N * nca.N);
+  for (let cell = 0; cell < ncaActivity.length; cell++) {
+    let d = 0;
+    for (let k = 0; k < 4; k++) d += Math.abs(now[cell * C + k] - was[cell * C + k]);
+    ncaActivity[cell] = ncaActivity[cell] * 0.8 + d;
+  }
+}
+
+function drawNca() {
+  const { N, C } = nca;
+  const px = ncaCanvas.width / N;
+  const view = selected && nca.views?.get(selected.id);
+  nca.draw(ncaCtx, undefined, view || nca.x);
+  if (!ncaOwners) return;
+  const src = view || nca.x;
+  const huesById = new Map(world.drones.filter((d) => d.alive).map((d) => {
+    const ids = R.liveIds(d.state);
+    return [d.id, hue(ids.indexOf(d.id), ids.length)];
+  }));
+  const inShape = (cell) => src[cell * C + 3] > 0.1;
+  // territory tint
+  ncaCtx.globalAlpha = 0.13;
+  for (let cell = 0; cell < N * N; cell++) {
+    ncaCtx.fillStyle = huesById.get(ncaOwners[cell]) || '#888';
+    ncaCtx.fillRect((cell % N) * px, Math.floor(cell / N) * px, px, px);
+  }
+  ncaCtx.globalAlpha = 1;
+  // a selected drone's copy: cells it can't currently hear are stale
+  if (view) {
+    ncaCtx.fillStyle = 'rgba(229,83,75,0.28)';
+    for (let cell = 0; cell < N * N; cell++) {
+      const o = ncaOwners[cell];
+      if (o !== selected.id && ncaGroup.get(o) !== ncaGroup.get(selected.id) && inShape(cell)) ncaCtx.fillRect((cell % N) * px, Math.floor(cell / N) * px, px, px);
+    }
+  }
+  // patch borders inside the shape: the cells two drones swap by radio
+  const sees = (a, b) => ncaGroup.get(a) === ncaGroup.get(b);
+  ncaCtx.lineCap = 'round';
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const cell = y * N + x;
+    for (const [nb, x0, y0, x1, y1] of [[cell + 1, x + 1, y, x + 1, y + 1], [cell + N, x, y + 1, x + 1, y + 1]]) {
+      if ((nb === cell + 1 && x + 1 >= N) || nb >= N * N) continue;
+      if (ncaOwners[nb] === ncaOwners[cell] || !(inShape(cell) || inShape(nb))) continue;
+      if (sees(ncaOwners[cell], ncaOwners[nb])) {
+        const busy = Math.min(1, (ncaActivity?.[cell] + ncaActivity?.[nb]) * 4 || 0);
+        ncaCtx.strokeStyle = `rgba(255,255,255,${0.35 + 0.65 * busy})`; ncaCtx.lineWidth = 1 + 2 * busy; ncaCtx.setLineDash([]);
+      } else {
+        ncaCtx.strokeStyle = 'rgba(255,90,80,0.95)'; ncaCtx.lineWidth = 2; ncaCtx.setLineDash([3, 3]);
+      }
+      ncaCtx.beginPath(); ncaCtx.moveTo(x0 * px, y0 * px); ncaCtx.lineTo(x1 * px, y1 * px); ncaCtx.stroke();
+    }
+  }
+  ncaCtx.setLineDash([]);
+  // badge: which drone computes which patch
+  ncaCtx.textAlign = 'center'; ncaCtx.textBaseline = 'middle'; ncaCtx.font = '700 10px system-ui';
+  for (const s of ncaPatches.slots || []) {
+    const cx = s.gx * px, cy = s.gy * px + 14;
+    ncaCtx.beginPath(); ncaCtx.arc(cx, cy, 8, 0, Math.PI * 2);
+    ncaCtx.fillStyle = 'rgba(11,15,20,0.85)'; ncaCtx.fill();
+    ncaCtx.lineWidth = selected?.id === s.id ? 3 : 2; ncaCtx.strokeStyle = selected?.id === s.id ? '#fff' : huesById.get(s.id); ncaCtx.stroke();
+    ncaCtx.fillStyle = '#e6edf3'; ncaCtx.fillText(s.id, cx, cy + 0.5);
+  }
+  ncaCtx.textBaseline = 'alphabetic';
+}
+
 const ncaCanvas = $('nca'), ncaCtx = ncaCanvas.getContext('2d');
 fetch('../recovery/models/formation-nca.json')
   .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
@@ -472,8 +581,12 @@ function loop(t) {
   owed += Math.min(0.1, (t - (lastFrame || t)) / 1000); lastFrame = t;
   for (; owed >= DT; owed -= DT) {
     const before = world.tick;
+    const radioTick = world.steps % TICK_STEPS === 0;
+    const nodes = radioTick && [world.base, ...world.drones.filter((d) => d.alive)];
+    const pre = radioTick && msgs.before(nodes);
     world.step(); reference.on.step(); reference.off.step();
     if (world.tick !== before) {
+      msgs.after(pre, nodes.filter((n) => n === world.base || n.alive), world.links, performance.now());
       updateStats();
       if (world.tick % SAMPLE_TICKS === 0) sample();
     }
@@ -481,9 +594,14 @@ function loop(t) {
   draw();
   drawGraph();
   if (nca) {
-    if (++frame % NCA_FRAMES_PER_STEP === 0) { nca.step(); watchNca(); }
-    nca.draw(ncaCtx);
-    if (frame % 15 === 0) $('ncaSim').textContent = `shape restored: ${Math.round(nca.similarity() * 100)}%`;
+    if (++frame % NCA_FRAMES_PER_STEP === 0) { stepNca(); watchNca(); }
+    drawNca();
+    if (frame % 15 === 0) {
+      const n = ncaPatches.slots?.length || 0;
+      $('ncaSim').innerHTML = `shape ${Math.round(nca.similarity() * 100)}% · ${n} drones computing · ${ncaLast.fresh} edges shared` +
+        (ncaLast.stale ? ` · <span style="color:#ff5a50">${ncaLast.stale} stale</span>` : '');
+      $('ncaTitle').textContent = selected ? `Drone ${selected.id}'s copy of the network` : 'The gecko network, running on the drones';
+    }
   }
   requestAnimationFrame(loop);
 }

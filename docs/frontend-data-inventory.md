@@ -138,8 +138,12 @@ People are named three ways: `s3` in the log and drone panel, `3` in the grid, a
 
 | Shown as | Meaning | Read it from |
 |---|---|---|
-| Image | The self-repairing V. Failing a drone or clicking the image erases part of it | `nca.draw()` |
-| Shape restored: 93% | How close it is to the trained shape | `nca.similarity()` |
+| Image | The self-repairing V. Failing a drone or clicking the image erases part of it | `nca.draw()`, or `nca.draw(ctx, bg, nca.views.get(id))` for a selected drone's copy |
+| Tinted patches, id badges | Which drone computes which cells | `nca.assignOwners()` |
+| White / red dashed borders | Edge cells swapped by radio / neighbour out of reach, using an old copy | `stepSwarm()` returns `{ fresh, stale }` |
+| shape 100% · 9 drones computing · 59 edges shared · 8 stale | Shape match, patch count, border counts | `nca.similarity()`, `stepSwarm()` |
+
+Map extras: dots along links (orange found person, green base has it, gold new hub, small blue searched map), rings as news reaches each drone, and "k/n drones know" under each found person. All from `demo/messages.js`.
 
 It steps every 4 frames, and the percentage updates every 15 frames. The card stays as it is.
 

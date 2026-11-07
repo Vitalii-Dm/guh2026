@@ -137,6 +137,10 @@
       <span style="--c: var(--good)">reported to base</span>
       <span style="--c: rgba(120,24,36,0.9)">radio blackout</span>
       <span style="--c: rgba(110,215,255,0.95)">radio link</span>
+      <span style="--c: #ff7a59">dot: report of a found person</span>
+      <span style="--c: #3fb950">dot: "base has it"</span>
+      <span style="--c: #f2c14e">dot/ring: new hub</span>
+      <span style="--c: #6ed7ff">small dot: searched map</span>
       <span style="--c: rgba(229,83,75,0.6)">dashed: ridge in the way</span>
       <span style="--c: var(--bad)">red X: failed drone</span>
       <span style="--c: transparent">dark: unsearched · ring colour: comms mode · dotted lines: home strips</span>
@@ -167,8 +171,8 @@
       </div>
     </div>
     <div class="card">
-      <h2>What each drone's tiny learned rule does</h2>
-      <p class="muted">A neural cellular automaton trained like the self-repairing gecko, on our V formation. Every pixel only sees its neighbours. Fail a drone, or click here, and the shape regrows.</p>
+      <h2 id="ncaTitle">The gecko network, running on the drones</h2>
+      <p class="muted">A neural cellular automaton trained like the self-repairing gecko, on our V formation. Each tinted patch is computed by the drone on its badge. A cell only sees its 8 neighbours, so drones swap the edge cells of their patches by radio: white borders, brighter while they're busy rebuilding. <span style="color:#ff5a50">Red dashed</span>: that neighbour is out of reach, so the drone works from the last copy it got. Fail a drone and its neighbours take over its patch and regrow it. Click a drone to see its copy.</p>
       <canvas id="nca" width="320" height="320"></canvas>
       <div class="nca-meta"><span id="ncaSim">loading model…</span><button id="ncaReset">Regrow from one cell</button></div>
     </div>

@@ -45,6 +45,15 @@ nca.step(); nca.draw(canvas.getContext('2d'));
 nca.erase(slotX * nca.N, slotY * nca.N, 5);
 ```
 
+Run it on the drones instead, each computing its own patch:
+
+```js
+const owner = nca.assignOwners(liveDrones.map((d) => ({ id: d.id, gx: slotX * nca.N, gy: slotY * nca.N })));
+// group: drones with the same value can reach each other by radio (relays included)
+const { fresh, stale } = nca.stepSwarm(owner, group);
+nca.views.get(id);                     // drone `id`'s own copy of the grid, for drawing
+```
+
 ## Run the demo
 
 ES modules don't load from `file://`, so serve the repo root:

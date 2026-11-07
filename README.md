@@ -1,6 +1,6 @@
 # Resilient rescue drone swarm: hub recovery
 
-For GreatUniHack 2026, Neptune North challenge. Drones search mountains for missing people and keep going when radio fails: no drone waits for instructions, and what they learn reaches base once a route exists. A report that has reached one other drone survives losing its finder or the hub. A neural cellular automaton, based on [Google's self-repairing gecko](https://distill.pub/2020/growing-ca/), shows a formation regrowing as a visual analogy.
+For GreatUniHack 2026, Neptune North challenge. Drones search mountains for missing people and keep going when radio fails: no drone waits for instructions, and what they learn reaches base once a route exists. A report that has reached one other drone survives losing its finder or the hub. A neural cellular automaton, based on [Google's self-repairing gecko](https://distill.pub/2020/growing-ca/), is computed by the drones between them: each runs it on its own patch and swaps edge cells with neighbours by radio, and the formation picture regrows when one fails.
 
 - `recovery/`: drop-in frontend modules (no dependencies). See [recovery/README.md](recovery/README.md).
 - `demo/`: interactive demo. `sim.js` is the simulation with no DOM, `demo.js` draws it. Choose how many drones launch, fail them, paint a radio blackout, cut all radio, and watch the search graph. The graph compares this run with two unseen runs on the same terrain: one with comms on and nothing failed, one with no radio from launch.
