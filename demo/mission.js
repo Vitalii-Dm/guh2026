@@ -16,7 +16,7 @@ export const droneOf = (id) => (id.startsWith('drone-') ? Number(id.slice(6)) : 
 // Speed. The mission clock runs at `rate` times real time, the same on every
 // device. A change is scheduled SPEED_CHANGE_MS ahead, so every phone has
 // polled it before it takes effect and nobody jumps.
-export const RATES = [0.25, 0.5, 1, 2, 4];
+export const RATES = [0.25, 0.5, 1, 2, 4, 8];
 export const DEFAULT_RATE = 2;
 export const SPEED_CHANGE_MS = 1500;
 
