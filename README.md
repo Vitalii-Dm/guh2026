@@ -1,9 +1,5 @@
 <div align="center">
 
-<!-- Hero image: add a wide screenshot of the presentation intro or the 3D demo here, e.g.
-<img src="docs/images/hero.png" alt="Ridgeline" width="100%">
--->
-
 # Ridgeline
 
 **A rescue drone swarm that keeps searching when the mountain cuts the signal.**
@@ -33,8 +29,6 @@ Ridgeline is built for exactly that moment.
 
 ## How it works
 
-<!-- Screenshot: the 3D relay scene from the presentation site (drone A, the ridge, drone B on the crest). -->
-
 ```mermaid
 flowchart LR
     P(("🧍 Person<br/>found")) --> A["Drone A<br/>(behind the ridge)"]
@@ -57,7 +51,7 @@ Every drone runs the same small set of rules on **its own copy** of what the swa
 | 📦 | **Data mule** | A drone holding a report with no radio route to base flies the report home itself. Other holders wait their turn, so the report still gets home if the first carrier is lost. |
 | 🦎 | **A formation that heals** | A neural cellular automaton, based on [Google's self-repairing gecko](https://distill.pub/2020/growing-ca/), is computed *by the drones between them*: each runs it on its own patch and swaps edge cells by radio. Fail a drone and its neighbours regrow its part. |
 
-A full message is about 1.3 KB for 15 drones with 7 reports. The full design is in [`docs/hub-recovery-plan.md`](docs/hub-recovery-plan.md).
+A full message is up to about 1.4 KB for 15 drones with 7 reports. The full design is in [`docs/hub-recovery-plan.md`](docs/hub-recovery-plan.md).
 
 ## Three ways to see it
 
@@ -66,8 +60,6 @@ A full message is about 1.3 KB for 15 drones with 7 reports. The full design is 
 | 🎬 | **Presentation site**: the story in four screens. Intro over a real photo of the Langtang range, the 26 August timeline with real footage, a scroll-driven 3D relay rescue, then real-world applications. | [`site/`](site) · `localhost:8080/site/` |
 | 🛰️ | **Live simulation**: launch 3–15 drones, fail the hub or any drone, paint a radio blackout, cut all radio, and watch the search graph. Switch between **2D and 3D** on the same running simulation. | [`demo/`](demo) · `localhost:8080/demo/` |
 | 📱 | **Phones as drones**: up to three iPhones fly real drones in the swarm. Turn on aeroplane mode and the phone keeps searching alone; turn it off and what it found spreads through the swarm. | [`demo/phone.html`](demo/phone.html) · [design doc](docs/designs/phone-drones.md) |
-
-<!-- Screenshots: add one per row above, e.g. docs/images/site.png, docs/images/demo-2d.png, docs/images/demo-3d.png, docs/images/phone.png -->
 
 The search graph compares the run you're watching with two hidden runs on the same terrain: one with radio on and nothing failed, one with no radio at all.
 
@@ -98,8 +90,6 @@ This runs `python3 serve.py` (with caching off). Then open:
 > The presentation site loads its photos, footage and three.js from the web, so it needs an internet connection. The demo's three.js is vendored and works offline.
 
 ## Phones as drones
-
-<!-- Screenshot or short GIF: a phone in aeroplane mode next to the big screen showing it as NOT CONNECTED. -->
 
 The separate devices, the Wi-Fi links between them and aeroplane mode are **real**. Each phone runs the same `recovery/swarm-recovery.js` as the laptop, and the devices talk directly to each other over WebRTC data channels. The flight, sensors, terrain, people and drone radio range are simulated on each phone.
 
@@ -236,7 +226,7 @@ We'd rather you hear these from us:
 
 - **It's a simulation.** Drones move in 2D over a height map, and battery and payload aren't modelled. Phone mode makes the devices, links and outages real; the flight and sensors are still simulated.
 - **A report held by one drone can die with it.** Replication only works after contact. The person can be found again, and *Reports lost* counts this case.
-- **False takeovers happen.** With ridges blocking radio and nothing failed, a run has about 3–5 hub takeovers. The search doesn't notice, but it's visible.
+- **False takeovers happen.** With ridges blocking radio and nothing failed, a normal demo run has about 3–5 hub takeovers. Phone mode has more: one full three-phone rehearsal at the slower speed had 13. The search doesn't notice, but it's visible.
 - **Comms barely change how fast ground is searched**, because strips are fixed. What comms decide is *when base finds out*.
 - **Messages aren't authenticated.** A forged epoch or `delivered` flag would be believed.
 - **The network draws the formation; it doesn't fly it.** Where each drone flies comes from the shared state.
@@ -250,7 +240,7 @@ Built at GreatUniHack 2026 for the Neptune North challenge.
 |---|---|
 | **Vitalii** | Hub recovery, shared swarm memory, the self-repairing network, the simulation |
 | **Dima** | Phones as drones: device links, the helper, phone mode |
-| **_Add name_** | Presentation website and story |
+| **Alisa** | Presentation website and story |
 
 ## Credits
 
