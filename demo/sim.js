@@ -9,6 +9,19 @@ export { W, H, CELL, COLS, ROWS, N_DRONES, N_SURVIVORS, DT, TICK_STEPS, SENSE, B
 
 const RELAY_HOPS = 4;               // hops a message travels per tick
 const SECONDS = (ticks) => Math.round(ticks * DT * TICK_STEPS);
+/**
+ * A radio message: a copy of the shared part of a drone's state, so drones in
+ * the same JS thread never share objects. Same result as
+ * structuredClone(R.snapshot(state)), several times cheaper, and the
+ * simulation's main cost before.
+ */
+function message(state) {
+  const roster = {}, survivors = {};
+  for (const id in state.roster) roster[id] = { ...state.roster[id] };
+  for (const id in state.survivors) survivors[id] = { ...state.survivors[id] };
+  return { roster, survivors, visited: state.visited.slice(), hub: { ...state.hub }, hops: state.hops };
+}
+
 
 /**
  * @param {object} o
@@ -33,9 +46,11 @@ export function createSim({ seed, terrain, drones = N_DRONES, range = 190, los =
     mode: 'search',                  // or 'formation'
     terrain,
     base: { ...BASE, isBase: true, state: R.createState(R.BASE_ID, ids, { hubId: 1, cols: COLS, rows: ROWS }) },
-    drones: ids.map((id) => ({ ...D.createDrone(id, ids), remote: remoteIds.includes(id), inContact: true, lastMessage: -1 })),
+    drones: ids.map((id) => ({ ...D.createDrone(id, ids), remote: remoteIds.includes(id), inContact: true, lastMessage: -1,
+      own: new Uint8Array(COLS * ROWS) })),   // cells it searched itself (display only)
     survivors: D.makeSurvivors(seed, terrain),
     truthVisited: new Set(),
+    searchedBy: new Int16Array(COLS * ROWS), // first drone to search each cell, 0 = nobody (display only)
     blackout: new Uint8Array(COLS * ROWS), // painted cells: no radio in or out
     links: [],                       // pairs that can talk
     blocked: [],                     // pairs in range but behind a ridge
@@ -62,7 +77,7 @@ export function createSim({ seed, terrain, drones = N_DRONES, range = 190, los =
     // several hops per tick (merge-only rounds), then run the protocol step.
     if (sim.links.length) {
       for (let round = 0; round < RELAY_HOPS - 1; round++) {
-        const snaps = ns.map((n) => structuredClone(R.snapshot(n.state)));
+        const snaps = ns.map((n) => message(n.state));
         ns.forEach((n, i) => {
           if (n.remote) return;
           const msgs = nbrs[i].map((j) => snaps[j]);
@@ -71,7 +86,7 @@ export function createSim({ seed, terrain, drones = N_DRONES, range = 190, los =
         });
       }
     }
-    const snaps = ns.map((n) => structuredClone(R.snapshot(n.state)));
+    const snaps = ns.map((n) => message(n.state));
     const inbox = nbrs.map((js) => js.map((j) => snaps[j]));
     ns.forEach((n, i) => {
       if (n.remote) return;
@@ -80,12 +95,12 @@ export function createSim({ seed, terrain, drones = N_DRONES, range = 190, los =
       n.commsMode = mode;
       for (const e of events) {
         const [type, a, b] = e.split(':');
-        if (type === 'became-hub') onLog(`<b>Drone ${a} took over as hub</b> (${b}) — lowest live id it can reach`, e);
-        if (type === 'marked-failed') onLog(`Drone ${n.id} has heard nothing of drone ${a} for ${SECONDS(R.DEFAULTS.failTimeout)} s — treating it as failed`, `mf${a}`);
-        if (type === 'delivered') onLog(`Report for person ${a} reached base — rescue team dispatched`, e);
+        if (type === 'became-hub') onLog(`<b>Drone ${a} took over as hub</b> (${b}), the lowest live id it can reach`, e);
+        if (type === 'marked-failed') onLog(`Drone ${n.id} has heard nothing of drone ${a} for ${SECONDS(R.DEFAULTS.failTimeout)} s and treats it as failed`, `mf${a}`);
+        if (type === 'delivered') onLog(`Report for person ${a} reached base. Rescue team dispatched.`, e);
       }
       if (n !== sim.base && hubStatus === 'suspect' && !R.isHub(n.state) && mode !== 'alone') {
-        onLog(`Drone ${n.id}: no word from hub ${n.state.hub.id} for ${SECONDS(R.DEFAULTS.hubTimeout)} s — hub suspect`, `sus${n.state.hub.id}e${n.state.hub.epoch}`);
+        onLog(`Drone ${n.id}: no word from hub ${n.state.hub.id} for ${SECONDS(R.DEFAULTS.hubTimeout)} s, hub suspect`, `sus${n.state.hub.id}e${n.state.hub.epoch}`);
       }
     });
     for (const d of sim.drones) if (d.alive && !d.remote) d.target = D.chooseTarget(d, sim, onLog);
@@ -98,12 +113,14 @@ export function createSim({ seed, terrain, drones = N_DRONES, range = 190, los =
       for (const [c, r] of D.cellsInView(d)) {
         R.recordVisit(d.state, c, r);
         sim.truthVisited.add(`${c},${r}`);
+        d.own[r * COLS + c] = 1;
+        if (!sim.searchedBy[r * COLS + c]) sim.searchedBy[r * COLS + c] = d.id;
       }
       for (const s of D.peopleInView(d, sim.survivors)) {
         const again = s.foundBy && !sim.holders(s).length;
         R.recordSurvivor(d.state, s.id, s.x, s.y, sim.tick);
         if (!s.foundBy) { s.foundBy = d.id; onLog(`<b>Person ${s.id} found</b> by drone ${d.id}`); }
-        else if (again) onLog(`<b>Person ${s.id} found again</b> by drone ${d.id} — the first report was lost`);
+        else if (again) onLog(`<b>Person ${s.id} found again</b> by drone ${d.id}. The first report was lost.`);
       }
     }
   }
@@ -131,7 +148,11 @@ export function createSim({ seed, terrain, drones = N_DRONES, range = 190, los =
     Object.assign(d, { inContact: true, lastMessage: m.tick, x: m.x, y: m.y, angle: m.angle, task: m.task, hubStatus: m.hubStatus, commsMode: m.mode });
     Object.assign(d.state, structuredClone(m.snapshot));
     for (let c = 0; c < COLS; c++) {
-      for (let r = 0; r < ROWS; r++) if (R.isVisited(d.state, c, r)) sim.truthVisited.add(`${c},${r}`);
+      for (let r = 0; r < ROWS; r++) {
+        if (!R.isVisited(d.state, c, r)) continue;
+        sim.truthVisited.add(`${c},${r}`);
+        if (!sim.searchedBy[r * COLS + c]) { sim.searchedBy[r * COLS + c] = d.id; d.own[r * COLS + c] = 1; }
+      }
     }
     for (const s of sim.survivors) {
       const report = d.state.survivors[s.id];
@@ -157,7 +178,7 @@ export function createSim({ seed, terrain, drones = N_DRONES, range = 190, los =
     return {
       tick: sim.tick,
       positions: sim.drones.map(({ id: n, x, y, alive, inContact }) => ({ id: n, x, y, alive, inContact })),
-      messages: speakers.map((n) => ({ id: n.id ?? R.BASE_ID, isBase: n.isBase, tick: sim.tick, x: n.x, y: n.y, angle: n.angle, task: n.task, snapshot: structuredClone(R.snapshot(n.state)) })),
+      messages: speakers.map((n) => ({ id: n.id ?? R.BASE_ID, isBase: n.isBase, tick: sim.tick, x: n.x, y: n.y, angle: n.angle, task: n.task, snapshot: message(n.state) })),
     };
   };
 
@@ -187,7 +208,7 @@ export function createSim({ seed, terrain, drones = N_DRONES, range = 190, los =
     const wasHub = sim.currentHub() === d.id;
     const slot = R.formationSlotFor(d.state, d.id);
     d.alive = false; d.diedAt = now;
-    onLog(`<b>Drone ${d.id} failed</b>${wasHub ? ' — it was the hub' : ''}`);
+    onLog(`<b>Drone ${d.id} failed</b>${wasHub ? '. It was the hub.' : ''}`);
     return slot;
   };
 

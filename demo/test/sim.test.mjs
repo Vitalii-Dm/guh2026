@@ -130,7 +130,7 @@ test('restoring radio causes no false failures or takeovers', () => {
     logs.length = 0;
     s.radio = true;
     s.run(20); // less than hubTimeout: ridges may genuinely split the swarm after that
-    assert.deepEqual(logs.filter((l) => /treating it as failed|took over/.test(l)), [], `seed ${seed}`);
+    assert.deepEqual(logs.filter((l) => /treats it as failed|took over/.test(l)), [], `seed ${seed}`);
     for (const d of s.drones) assert.equal(Object.values(d.state.roster).filter((e) => e.alive).length, 15);
   }
 });
@@ -208,4 +208,27 @@ test('every drone can say what it is doing', () => {
   s.mode = 'formation';
   s.run(1);
   assert.ok(s.drones.some((d) => /formation/.test(d.task)));
+});
+
+test('each searched cell is credited to the drone that searched it', () => {
+  const s = make(2026);
+  s.run(400);
+  const COLS = W / 20, ROWS = H / 20;
+  for (let i = 0; i < COLS * ROWS; i++) {
+    const key = `${i % COLS},${Math.floor(i / COLS)}`;
+    const byOwn = s.drones.filter((d) => d.own[i]).map((d) => d.id);
+    assert.equal(s.truthVisited.has(key), byOwn.length > 0, `cell ${key}`);
+    assert.equal(s.searchedBy[i] !== 0, byOwn.length > 0, `cell ${key}`);
+    if (byOwn.length) assert.ok(byOwn.includes(s.searchedBy[i]), `cell ${key}`);
+  }
+  // a drone's own cells are all in its map; the rest of its map came from others
+  for (const d of s.drones) {
+    let told = 0;
+    for (let i = 0; i < COLS * ROWS; i++) {
+      const visited = (d.state.visited[i >> 5] & (1 << (i & 31))) !== 0;
+      if (d.own[i]) assert.ok(visited);
+      else if (visited) told++;
+    }
+    assert.ok(told > 0, `drone ${d.id} heard nothing from others`);
+  }
 });

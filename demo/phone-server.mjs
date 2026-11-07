@@ -11,7 +11,7 @@ import { LAUNCH_DELAY_MS, MAX_FLEET, MIN_FLEET, PHONE_DRONES } from './mission.j
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 // The address may be public through a tunnel, so only these folders are served.
-const PUBLIC_DIRS = new Set(['demo', 'recovery']);
+const PUBLIC_DIRS = new Set(['demo', 'demo3d', 'recovery']);
 const START_PAGE = '/demo/?phones=1';
 const PEER_TTL = 5000;     // ms since its last poll before a device stops being listed
 const MAX_BODY = 64 * 1024;  // limit per request

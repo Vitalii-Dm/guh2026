@@ -90,12 +90,12 @@ function muleTarget(d, tick, onLog) {
   const home = { x: BASE.x, y: BASE.y - HOME_OFFSET };
   if (Math.hypot(d.x - home.x, d.y - home.y) < 12 && ++d.atBaseTicks > MULE_WAIT) {
     // Made it back and base still can't hear us: search on, try again later.
-    onLog(`Drone ${d.id} can't reach base even from here — back to searching, will retry`, `rest${d.id}t${tick}`);
+    onLog(`Drone ${d.id} can't reach base even from here. Back to searching; it will retry later.`, `rest${d.id}t${tick}`);
     d.restUntil = tick + MULE_REST;
     d.muling = false; d.atBaseTicks = 0;
     return null;
   }
-  onLog(`Drone ${d.id} has no route to base — flying report ${report} back (data mule)`, `mule${report}d${d.id}`);
+  onLog(`Drone ${d.id} has no route to base, so it's flying report ${report} back itself (data mule)`, `mule${report}d${d.id}`);
   d.muling = true;
   d.task = `carrying the report for ${report} home`;
   return home;

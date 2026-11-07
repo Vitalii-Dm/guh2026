@@ -7,7 +7,7 @@ This describes what is built. `hub-recovery-plan.pdf` next to this file is the o
 ## TL;DR for the team
 
 - **Piece A, shared swarm memory:** every drone keeps a copy of what the swarm knows and passes it on at every contact. A drone that hears nobody carries on alone. Failing the hub, or any other drone, doesn't stop the search.
-- **Piece B, gecko panel:** a Growing Neural Cellular Automaton, based on Google's self-repairing gecko demo, trained on the V formation. It is a side panel for the pitch. No drone runs it.
+- **Piece B, gecko panel:** a Growing Neural Cellular Automaton, based on Google's self-repairing gecko demo, trained on the V formation. The drones compute it between them: each owns a patch of the grid and swaps edge cells with its neighbours by radio. It draws the V; it doesn't steer the drones.
 - **What the hub does:** nothing depends on it, on purpose. See "What the hub does" below.
 
 ## Piece A: shared swarm memory
@@ -77,7 +77,7 @@ The hub role doesn't change any drone's behaviour. Search, reports and mules all
 
 ### Seeing what each drone knows
 
-Click a drone and the map shows only its private copy: the ground it knows is searched and the people it knows about. Its panel compares that with reality. The "Who knows what" grid shows the same for every drone at once. In a blackout the drones disagree and the grid turns patchy; it fills in when they reconnect. Nothing a drone decides reads the full map, so this view is what it actually acts on.
+Click a drone and the map shows only its private copy: the ground it knows is searched and the people it knows about. That ground is painted solid in the drone's colour where it searched itself, and in the finder's colour where another drone searched it and told it, so you can see each drone's share of the work and what it got from the others. Who searched a cell is tracked by the simulation for this view only; the radio message just says the cell is searched. Its panel compares that with reality. The "Who knows about each person" table below the map shows, for every found person, which drones and whether base know about them. In a blackout the drones disagree and the rows turn patchy; they fill in when the drones reconnect. Nothing a drone decides reads the full map, so this view is what it actually acts on.
 
 ### Limits (for judge questions)
 
@@ -93,14 +93,23 @@ Click a drone and the map shows only its private copy: the ground it knows is se
 
 A 40 px grid, trained locally with `nca/train_nca.py` (PyTorch) in Regenerating mode. The weights export to JSON and run in plain JS (`recovery/nca-runtime.js`). Failing a drone erases part of the shape, and it regrows.
 
+The grid is split between the live drones: each owns the cells nearest its place in the V (`assignOwners`) and computes only those (`stepSwarm`). A cell needs its 8 neighbours, so at patch borders a drone needs the cells another drone owns. It gets them from drones it can reach by radio, relays included. For a drone it can't reach, it keeps working from the last copy it received. When a drone fails, the patches are re-split and its neighbours regrow its part. Split this way with everyone in reach, it gives exactly the same result as running the network in one place (tested).
+
+The panel tints each drone's patch and badges it with the drone's id. Patch borders are white when the cells are being swapped, brighter while that part is rebuilding, and red dashed when the neighbour is out of reach. Clicking a drone shows its own copy of the grid, with the parts it can't currently hear tinted red.
+
 ### Honest limits
 
-- **It's an analogy.** Drones don't run this network. In Formation mode, they take slots by rank among the drones they've had news of within `slotTimeout` (15 ticks, about 2.4 s), so gaps close sooner than a drone is marked failed. Ridges make the V twitch, because a drone that dips behind one looks gone, so selecting Formation turns them off.
-- **It needs cells to talk every step,** so it isn't itself resilient to comms loss.
+- **It draws the formation, it doesn't fly it.** The drones compute the network, but where each drone flies comes from the shared state, not from the network. In Formation mode, they take slots by rank among the drones they've had news of within `slotTimeout` (15 ticks, about 2.4 s), so gaps close sooner than a drone is marked failed. Ridges make the V twitch, because a drone that dips behind one looks gone, so selecting Formation turns them off.
+- **Patches are split using the true list of live drones,** not each drone's own belief, to keep the panel simple.
+- **Stale copies hide damage instead of breaking the shape.** The V doesn't change, so an old copy of a neighbour is still a good copy. Cutting radio turns borders red, but the shape stays whole; a drone's view only goes wrong when the patch it can't hear was damaged.
 - **The shape has 9 dots.** The demo launches 9 drones by default, so an erased patch matches the drone's slot. With another count, it only roughly matches.
 - **The relay chain from the main plan isn't built.** The trained shape is the V.
 
-Pitch line: *"Same idea as the self-repairing gecko: every part follows one small local rule, and the whole repairs itself without a leader."*
+Pitch line: *"Same idea as the self-repairing gecko: every drone runs one small learned rule on its own patch, using only what its neighbours radio it, and the whole repairs itself without a leader."*
+
+### Message animations
+
+On the map, dots fly along radio links when news crosses them: orange for a found person, green for "base has this report", gold for a new hub, small blue for searched ground (thinned out). A ring flashes on each drone as the news reaches it, hop by hop, so a find spreads visibly across the swarm. A new hub sends out a large gold ring, and each found person shows how many drones know about them. This is worked out from the shared state before and after each radio tick (`demo/messages.js`); it doesn't change the simulation.
 
 ## Touchpoints with the main plan
 

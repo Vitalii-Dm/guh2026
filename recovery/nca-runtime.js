@@ -8,6 +8,7 @@
 //
 // const nca = new NCA(await (await fetch('models/formation-nca.json')).json());
 // nca.reset(); every frame: nca.step(); nca.draw(ctx2d);
+// Split across drones: owner = nca.assignOwners(slots); nca.stepSwarm(owner, group);
 
 const SX = [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]].map((r) => r.map((v) => v / 8));
 const SY = [[-1, -2, -1], [0, 0, 0], [1, 2, 1]].map((r) => r.map((v) => v / 8));
@@ -40,6 +41,7 @@ export class NCA {
     const [sx, sy] = this.seed;
     const o = (sy * this.N + sx) * this.C;
     for (let k = 3; k < this.C; k++) this.x[o + k] = 1;
+    this.views = null;
   }
 
   setState(arr) {
@@ -66,63 +68,89 @@ export class NCA {
     }
   }
 
-  /** One update step. fireRate=1 makes it deterministic (used by the test). */
-  step(fireRate = this.fireRate) {
-    const { N, C, H, x, next, p, h, w1, b1, w2, b2 } = this;
-    this.aliveMask(x, this.preAlive);
-    // Cells next to a live cell must be updated too: their new alpha decides
-    // whether that live cell survives (post-alive mask). Cells further out
-    // are zeroed at the end anyway, so they can be skipped.
+  /** Largest alpha in the 3x3 block around (x, y) of `src`. */
+  maxAlpha(src, y, x) {
+    const { N, C } = this;
+    let m = -Infinity;
+    for (let dy = -1; dy <= 1; dy++) {
+      const yy = y + dy;
+      if (yy < 0 || yy >= N) continue;
+      for (let dx = -1; dx <= 1; dx++) {
+        const xx = x + dx;
+        if (xx < 0 || xx >= N) continue;
+        const a = src[(yy * N + xx) * C + 3];
+        if (a > m) m = a;
+      }
+    }
+    return m;
+  }
+
+  /** Perceive cell (xi, y) in `src`, run the network, add the change into out[o..o+C). */
+  updateCell(src, y, xi, out, o) {
+    const { N, C, H, p, h, w1, b1, w2, b2 } = this;
+    for (let c = 0; c < C; c++) {
+      let id = 0, gx = 0, gy = 0;
+      for (let ky = 0; ky < 3; ky++) {
+        const yy = y + ky - 1;
+        if (yy < 0 || yy >= N) continue;
+        for (let kx = 0; kx < 3; kx++) {
+          const xx = xi + kx - 1;
+          if (xx < 0 || xx >= N) continue;
+          const v = src[(yy * N + xx) * C + c];
+          if (ky === 1 && kx === 1) id = v;
+          gx += SX[ky][kx] * v;
+          gy += SY[ky][kx] * v;
+        }
+      }
+      p[c * 3] = id;
+      p[c * 3 + 1] = gx;
+      p[c * 3 + 2] = gy;
+    }
+    const P = C * 3;
+    for (let j = 0; j < H; j++) {           // h = relu(W1 p + b1)
+      let s = b1[j];
+      const row = j * P;
+      for (let i = 0; i < P; i++) s += w1[row + i] * p[i];
+      h[j] = s > 0 ? s : 0;
+    }
+    for (let c = 0; c < C; c++) {           // dx = W2 h + b2
+      let s = b2[c];
+      const row = c * H;
+      for (let j = 0; j < H; j++) s += w2[row + j] * h[j];
+      out[o + c] += s;
+    }
+  }
+
+  /** Cells next to a pre-alive cell (they decide whether it survives). */
+  nearMask(pre) {
+    const { N } = this;
     const near = this.near || (this.near = new Uint8Array(N * N));
     near.fill(0);
     for (let y = 0; y < N; y++) for (let xi = 0; xi < N; xi++) {
-      if (!this.preAlive[y * N + xi]) continue;
+      if (!pre[y * N + xi]) continue;
       for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
         const yy = y + dy, xx = xi + dx;
         if (yy >= 0 && yy < N && xx >= 0 && xx < N) near[yy * N + xx] = 1;
       }
     }
+    return near;
+  }
+
+  /** One update step. fireRate=1 makes it deterministic (used by the test). */
+  step(fireRate = this.fireRate) {
+    const { N, C, x, next } = this;
+    this.aliveMask(x, this.preAlive);
+    // Cells next to a live cell must be updated too: their new alpha decides
+    // whether that live cell survives (post-alive mask). Cells further out
+    // are zeroed at the end anyway, so they can be skipped.
+    const near = this.nearMask(this.preAlive);
     next.set(x);
     for (let y = 0; y < N; y++) {
       for (let xi = 0; xi < N; xi++) {
         const cell = y * N + xi;
-        if (!near[cell]) continue;                    // result is zeroed anyway
+        if (!near[cell]) continue;
         if (fireRate < 1 && this.random() > fireRate) continue;
-        // perceive
-        for (let c = 0; c < C; c++) {
-          let id = 0, gx = 0, gy = 0;
-          for (let ky = 0; ky < 3; ky++) {
-            const yy = y + ky - 1;
-            if (yy < 0 || yy >= N) continue;
-            for (let kx = 0; kx < 3; kx++) {
-              const xx = xi + kx - 1;
-              if (xx < 0 || xx >= N) continue;
-              const v = x[(yy * N + xx) * C + c];
-              if (ky === 1 && kx === 1) id = v;
-              gx += SX[ky][kx] * v;
-              gy += SY[ky][kx] * v;
-            }
-          }
-          p[c * 3] = id;
-          p[c * 3 + 1] = gx;
-          p[c * 3 + 2] = gy;
-        }
-        // h = relu(W1 p + b1)
-        const P = C * 3;
-        for (let j = 0; j < H; j++) {
-          let s = b1[j];
-          const row = j * P;
-          for (let i = 0; i < P; i++) s += w1[row + i] * p[i];
-          h[j] = s > 0 ? s : 0;
-        }
-        // dx = W2 h + b2
-        const o = cell * C;
-        for (let c = 0; c < C; c++) {
-          let s = b2[c];
-          const row = c * H;
-          for (let j = 0; j < H; j++) s += w2[row + j] * h[j];
-          next[o + c] += s;
-        }
+        this.updateCell(x, y, xi, next, cell * C);
       }
     }
     // alive = pre & post
@@ -133,6 +161,95 @@ export class NCA {
     }
     this.x = next;
     this.next = x;
+  }
+
+  // ------------------------------------------------------------ on the drones
+  // The grid is split between drones: each cell is computed by the drone that
+  // owns it. A drone sees its own cells live and other drones' cells only as
+  // they last arrived by radio. Drones that can reach each other (directly or
+  // through relays) share the same `group`; for any other drone it keeps
+  // using the last copy it received, which goes stale.
+
+  /**
+   * Give each cell to the nearest drone.
+   * @param {{id: number, gx: number, gy: number}[]} drones  positions in grid cells
+   * @returns {Int32Array} owner id per cell
+   */
+  assignOwners(drones) {
+    const { N } = this;
+    const owner = new Int32Array(N * N).fill(-1);
+    for (let y = 0; y < N; y++) for (let xi = 0; xi < N; xi++) {
+      let best = -1, bd = Infinity;
+      for (const d of drones) {
+        const dd = (xi + 0.5 - d.gx) ** 2 + (y + 0.5 - d.gy) ** 2;
+        if (dd < bd) { bd = dd; best = d.id; }
+      }
+      owner[y * N + xi] = best;
+    }
+    return owner;
+  }
+
+  /**
+   * One step computed by the drones.
+   * @param {Int32Array} owner         from assignOwners()
+   * @param {Map<number, any>} group   drones with equal values can reach each other
+   * @returns {{ fresh: number, stale: number }} cell borders exchanged / served stale
+   */
+  stepSwarm(owner, group, fireRate = this.fireRate) {
+    const { N, C, x, next } = this;
+    const cells = N * N;
+    const views = this.views || (this.views = new Map());
+    const ids = new Set(owner);
+    for (const id of views.keys()) if (!ids.has(id)) views.delete(id);
+    const sees = (a, b) => a === b || (group.has(a) && group.get(a) === group.get(b));
+    // 1. radio: refresh each drone's copy of the cells it can hear
+    for (const id of ids) {
+      let v = views.get(id);
+      if (!v) { views.set(id, (v = Float32Array.from(x))); continue; }
+      for (let cell = 0; cell < cells; cell++) {
+        if (sees(id, owner[cell])) v.set(x.subarray(cell * C, cell * C + C), cell * C);
+      }
+    }
+    // 2. each drone updates its own cells from its own copy
+    const pre = this.preAlive;
+    for (let y = 0; y < N; y++) for (let xi = 0; xi < N; xi++) {
+      const cell = y * N + xi;
+      pre[cell] = this.maxAlpha(views.get(owner[cell]), y, xi) > 0.1 ? 1 : 0;
+    }
+    const near = this.nearMask(pre);
+    next.set(x);
+    for (let y = 0; y < N; y++) for (let xi = 0; xi < N; xi++) {
+      const cell = y * N + xi;
+      if (!near[cell]) continue;
+      if (fireRate < 1 && this.random() > fireRate) continue;
+      this.updateCell(views.get(owner[cell]), y, xi, next, cell * C);
+    }
+    // 3. alive check, again with only what the owner can hear
+    let fresh = 0, stale = 0;
+    for (let y = 0; y < N; y++) for (let xi = 0; xi < N; xi++) {
+      const cell = y * N + xi, o = owner[cell], v = views.get(o);
+      let m = -Infinity;
+      for (let dy = -1; dy <= 1; dy++) {
+        const yy = y + dy;
+        if (yy < 0 || yy >= N) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const xx = xi + dx;
+          if (xx < 0 || xx >= N) continue;
+          const nb = yy * N + xx;
+          const a = (sees(o, owner[nb]) ? next : v)[nb * C + 3];
+          if (a > m) m = a;
+        }
+      }
+      if (!(pre[cell] && m > 0.1)) next.fill(0, cell * C, cell * C + C);
+      // count borders inside the shape (right and down neighbours)
+      if (pre[cell]) {
+        if (xi + 1 < N && owner[cell + 1] !== o) sees(o, owner[cell + 1]) ? fresh++ : stale++;
+        if (y + 1 < N && owner[cell + N] !== o) sees(o, owner[cell + N]) ? fresh++ : stale++;
+      }
+    }
+    this.x = next;
+    this.next = x;
+    return { fresh, stale };
   }
 
   /** Erase a disk of cells (grid coords) — simulates a drone dropping out. */
@@ -161,9 +278,9 @@ export class NCA {
     return Math.max(0, 1 - err / base);
   }
 
-  /** Draw onto a 2D canvas context, scaled to fill it. bg = [r,g,b] 0..1. */
-  draw(ctx, bg = [0.07, 0.09, 0.12]) {
-    const { N, C, x } = this;
+  /** Draw onto a 2D canvas context, scaled to fill it. bg = [r,g,b] 0..1; x = a drone's copy, if given. */
+  draw(ctx, bg = [0.07, 0.09, 0.12], x = this.x) {
+    const { N, C } = this;
     if (!this.image) {
       this.image = new ImageData(N, N);
       this.tmp = document.createElement('canvas');
