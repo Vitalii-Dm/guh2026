@@ -5,11 +5,14 @@
   "scripts": {
     "pretest": "npm install --no-audit --no-fund",
     "test": "node --test recovery/test/*.test.mjs demo/test/*.test.mjs",
-    "demo": "python3 -m http.server 8080",
-    "prephones": "npm install --no-audit --no-fund",
+    "demo": "python3 serve.py",
+    "prephones": "npm install --no-audit --no-fund || echo Could not install: the QR code may be missing",
     "phones": "node demo/phone-server.mjs"
   },
   "dependencies": {
     "qrcode-generator": "^2.0.4"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

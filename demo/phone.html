@@ -5,35 +5,82 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Rescue Drone</title>
 <style>
-  :root { color-scheme: dark; --bg: #0b0f14; --panel: #121821; --line: #223042; --text: #e6edf3; --muted: #8b9bb0; --good: #3fb950; --warn: #f29e4c; --bad: #e5534b; }
+  :root {
+    color-scheme: dark;
+    --table: #22282c; --sheet: #2a3135; --rule: #424b50; --ink: #eceeea; --pencil: #a3abad;
+    --good: #3fb950; --not-connected: #ffd400; --bad: #e5534b;
+    --mine: #2bd4c4; --others: #6aa8ff;
+    --sign: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  }
   * { box-sizing: border-box; }
-  html, body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.35 -apple-system, "Segoe UI", Inter, Helvetica, Arial, sans-serif; }
+  html, body { margin: 0; background: var(--table); color: var(--ink); font: 16px/1.35 -apple-system, "Segoe UI", Inter, Helvetica, Arial, sans-serif; }
   body { max-width: 640px; margin: 0 auto; padding: max(12px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); }
-  .status { padding: 14px 16px; border-radius: 10px; background: var(--panel); border-left: 6px solid var(--line); }
-  .status.good { border-color: var(--good); } .status.warn { border-color: var(--warn); } .status.bad { border-color: var(--bad); }
-  .status h1 { margin: 0; font-size: 24px; font-weight: 700; }
-  .status p { margin: 2px 0 0; color: var(--muted); }
-  .map { margin: 12px 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); }
+
+  .status { padding: 12px 14px; background: var(--sheet); color: var(--ink); border-radius: 4px; }
+  .status h1 { margin: 0; font: 700 34px/1 var(--sign); letter-spacing: .01em; display: flex; align-items: center; gap: 10px; }
+  .status h1::before { content: ""; flex: none; width: 16px; height: 16px; border-radius: 50%; background: currentColor; }
+  .status p { margin: 4px 0 0; }
+  .status.good { background: #123a1d; }
+  .status.good h1 { color: var(--good); }
+  .status.warn { background: var(--not-connected); color: #17140a; }
+  .status.warn h1::before { animation: pulse 1s ease-in-out infinite; }
+  .status.bad { background: #3a1614; }
+  @keyframes pulse { 50% { opacity: .25; } }
+  @media (prefers-reduced-motion: reduce) { .status.warn h1::before { animation: none; } }
+  .doing { margin: 10px 0 0; font: 600 21px/1.15 var(--sign); }
+  .radio { margin: 2px 0 0; color: var(--pencil); font-size: 14px; }
+
+  .found { margin-top: 10px; padding: 10px 14px; border-radius: 4px; background: #ff7a59; color: #1f0d07; font: 700 24px/1.1 var(--sign); }
+
+  .progress { margin: 12px 0 6px; }
+  .progress .row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .progress b { font: 700 30px/1 var(--sign); font-variant-numeric: tabular-nums; }
+  .progress span { color: var(--pencil); font-size: 14px; }
+  .bar { display: flex; height: 12px; margin-top: 5px; overflow: hidden; border-radius: 2px; background: #0e1214; }
+  .bar i { display: block; height: 100%; width: 0; }
+
+  .map { margin: 8px 0; overflow: hidden; border: 1px solid var(--rule); border-radius: 4px; background: #0e1214; }
   #map { display: block; width: 100%; height: auto; }
-  .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-  .fact { padding: 8px 10px; border-radius: 8px; background: var(--panel); }
-  .fact b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
-  .fact span { color: var(--muted); font-size: 13px; }
-  button { width: 100%; min-height: 48px; margin: 12px 0; border: 1px solid var(--line); border-radius: 8px; background: #1a2330; color: var(--text); font: inherit; font-weight: 600; }
-  button.on { border-color: var(--warn); background: #33240f; }
-  .note { margin: 0; color: var(--muted); font-size: 13px; }
+
+  .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 12px; margin: 0; padding: 0; list-style: none; font-size: 14px; }
+  .legend li { display: flex; align-items: center; gap: 7px; }
+  .legend i { flex: none; width: 14px; height: 14px; border-radius: 2px; }
+  .legend b { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+  .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .fact { padding: 7px 10px; border-radius: 4px; background: var(--sheet); }
+  .fact b { display: block; font: 700 26px/1.05 var(--sign); font-variant-numeric: tabular-nums; }
+  .fact span { color: var(--pencil); font-size: 13px; }
+
+  button { width: 100%; min-height: 48px; margin: 12px 0; border: 1px solid var(--rule); border-radius: 4px; background: transparent; color: var(--ink); font: inherit; font-weight: 600; }
+  button.on { border-color: var(--not-connected); background: #3a3208; }
+  .note { margin: 0; color: var(--pencil); font-size: 13px; }
 </style>
 </head>
 <body>
 <div class="status" id="status" role="status"><h1 id="headline">Connecting</h1><p id="detail"></p></div>
-<div class="map"><canvas id="map" width="880" height="600" aria-label="This drone's view of the map"></canvas></div>
+<p class="doing" id="doing"></p>
+<p class="radio" id="radioLine"></p>
+<div class="found" id="foundBanner" role="alert" hidden></div>
+
+<div class="progress">
+  <div class="row"><b id="searched">0%</b><span>of the map explored, as far as this drone knows</span></div>
+  <div class="bar" aria-hidden="true"><i id="barMine" style="background: var(--mine)"></i><i id="barOffline" style="background: var(--not-connected)"></i><i id="barOthers" style="background: var(--others)"></i></div>
+</div>
+<div class="map"><canvas id="map" width="880" height="600" aria-label="Map of what this drone has explored"></canvas></div>
+<ul class="legend">
+  <li><i style="background: var(--mine)"></i>By this drone<b id="nMine">0</b></li>
+  <li><i style="background: var(--not-connected)"></i>While offline<b id="nOffline">0</b></li>
+  <li><i style="background: var(--others)"></i>From other drones<b id="nOthers">0</b></li>
+  <li><i style="background: #0e1214; outline: 1px solid var(--rule)"></i>Not explored<b id="nLeft">0</b></li>
+</ul>
+
 <div class="facts">
   <div class="fact"><b id="drone">–</b><span>Your drone</span></div>
-  <div class="fact"><b id="searched">0%</b><span>Map it knows</span></div>
   <div class="fact"><b id="found">0</b><span>People it knows of</span></div>
 </div>
 <button id="radio" hidden>Radio off</button>
-<p class="note">Keep this page open with the screen on. Flight, sensors and the missing people are simulated on this phone. The network and any outage are real.</p>
+<p class="note">Keep this page open with the screen on. The flight, sensors, terrain, missing people and drone radio range are simulated on this phone. The separate devices, the Wi-Fi links between them and aeroplane mode are real.</p>
 <script type="module" src="phone.js"></script>
 </body>
 </html>

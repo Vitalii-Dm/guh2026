@@ -15,7 +15,7 @@ Every value belongs to one of four sources. Most of the demo's point is the gap 
 | Base's copy | What the rescue team knows | `world.base.state` |
 | Comparison runs | Two hidden runs on the same terrain and people, used only by the graph | `reference.on`, `reference.off` |
 
-Timing: the simulation ticks every 160 ms and the numbers refresh on each tick (`updateStats`). The map redraws every frame. The graph takes a sample every 4 ticks (0.64 s).
+Timing: the simulation ticks every 160 ms and the panels refresh about 5 times a second (`updateStats`). The map redraws up to 30 times a second. The graph takes a sample every 4 ticks (0.64 s).
 
 ## Swarm card
 
@@ -53,7 +53,7 @@ Timing: the simulation ticks every 160 ms and the numbers refresh on each tick (
 | Dot in the middle of a drone | Colour from its rank in its own roster. It can change during a run, so it doesn't identify a drone | `hue()` |
 | Gold ring, "HUB" | This drone believes it is the hub | `R.isHub(d.state)` |
 | Dashed orange ring, "?" | This drone suspects the hub has gone | `d.hubStatus` |
-| Label under a drone (`4 · 2 hops`) | Drone ID and radio hops to base, or "no route" | `d.state.hops` |
+| Label under a drone (`4: 2 hops`) | Drone ID and radio hops to base, or "no route" | `d.state.hops` |
 | "carrying report" | Flying a report home because it has no route | `d.muling` |
 
 ## Selected drone
@@ -122,8 +122,8 @@ It shows the newest 40, each with a time in seconds. Messages contain HTML (`<b>
 | Hub suspect | Drone 5: no word from hub 1 for 5 s, hub suspect |
 | Marked failed | Drone 4 has heard nothing of drone 2 for 14 s and treats it as failed |
 | Carrying a report | Drone 6 has no route to base, so it's flying report s3 back itself (data mule) |
-| Carrying failed | Drone 6 can't reach base even from here — back to searching, will retry |
-| Hub already down | The hub is already down — no drone has taken over yet |
+| Carrying failed | Drone 6 can't reach base even from here. Back to searching; it will retry later. |
+| Hub already down | The hub is already down and no drone has taken over yet |
 | Gecko regrow | Gecko panel: the damage reached the seed cell, so it regrows from one cell |
 
 People are named three ways: `s3` in the log and drone panel, `3` in the grid, and "Person s3" in sentences. One name throughout would help.
@@ -139,7 +139,7 @@ People are named three ways: `s3` in the log and drone panel, `3` in the grid, a
 
 Map extras: dots along links (orange found person, green base has it, gold new hub, small blue searched map), rings as news reaches each drone, and "k/n drones know" under each found person. All from `demo/messages.js`.
 
-It steps every 4 frames, and the percentage updates every 15 frames. The card stays as it is.
+It steps about 15 times a second, and the percentage updates every 8 map frames. The card stays as it is.
 
 ## Tracked but not shown
 
@@ -171,7 +171,7 @@ These would need a small simulation change before they could be shown.
 
 | Control | Options | Effect |
 |---|---|---|
-| Mode | Search, Formation | Formation also turns off Ridges block radio |
+| Mode | Search, Formation | Formation also turns off Ridges block it |
 | Fail the hub, Fail a random drone | Buttons | Fails a drone and marks the graph |
 | Fail this drone | In the drone panel | Fails the selected drone and closes the panel |
 | Paint blackout | Toggle, then drag on the map | Paints a 60 px radius brush |
@@ -179,23 +179,72 @@ These would need a small simulation change before they could be shown.
 | Cut all radio | Toggles to Restore radio | Stops all links |
 | Reset | Button | Restarts the same terrain |
 | New terrain | Button, shows the seed | Restarts on a random terrain |
-| Drones | Slider, 3 to 15, default 9 | Restarts the run |
-| Radio range (px) | Slider, 40 to 320, default 190 | Applies live |
-| Ridges block radio | Checkbox, default on | Applies live |
+| Speed | Slider, 0.25× to 4×, default 1× | Runs the simulation slower or faster. Applies live. Off in phone mode |
+| Drones | Slider, 3 to 15, default 9 (15 in phone mode) | Restarts the run |
+| Range, px | Slider, 40 to 320, default 190 | Applies live |
+| Ridges block it | Checkbox, default on | Applies live |
 | Regrow from one cell | Button on the gecko card | Restarts the gecko |
 
 ## Phone mode
 
-`demo/?phones=1` runs some drones on phones. The layout gains a Phones card, and these values change meaning:
+With `npm run phones`, http://localhost:8080/ on the laptop goes to `demo/?phones=1`, where some drones run on phones. The layout gains a Phones card. At widths of 1000 px or less the side panel moves above the map, so that card comes first. These values change meaning:
 
 | Value | Change in phone mode | Read it from |
 |---|---|---|
-| Phones card | QR code, join address, which drones are linked, and the Launch button | `/qr.svg`, `/mission` |
-| Dashed ring, "PHONE" | This drone is flown by a phone. Red, "PHONE: NO CONTACT", when its connection is lost | `d.remote`, `d.inContact` |
-| Reality | The laptop can't see a phone offline, so `world.truthVisited`, `s.foundBy` and a phone drone's position mean "everything received so far". The map fills in when a phone reconnects | `world.truthVisited` |
+| Dashed white ring, "PHONE" | This drone is flown by a phone, and is connected | `d.remote`, `d.phone`, `d.inContact` |
+| Pulsing yellow halo, tag `2 NOT CONNECTED` | After launch: this drone is flown by a phone that this screen can't hear | `d.remote`, `d.inContact` |
+| Pulsing yellow halo, no tag | Before launch: a phone claimed this drone but isn't linked. The Phones card names it | `d.phone`, `link.connected()` |
+| Label `2: last seen here` | Replaces the hops label while not connected. The drone is drawn where its last message put it | `d.x`, `d.y` |
+| Reality | The laptop can't see a phone offline, so `world.truthVisited`, `s.foundBy` and a phone drone's position mean "everything this screen has received". They update from any phone message over Wi-Fi, whatever the radio rules say. The map and "Area searched" fill in when a phone reconnects | `world.truthVisited` |
+| Base's copy | Still the swarm's merge over simulated radio, so "Area known at base" and "Reports at base" rise later than the map | `world.base.state` |
 | One drone's copy, for a phone drone | What that phone last said, not live. It freezes during an outage | `d.state` |
+| Hub reachable / Neighbours only / Fully cut off | A not-connected phone drone counts as fully cut off, as far as this screen can tell | `d.commsMode` |
+| Hub line | A not-connected phone drone gets no vote. With no drone in contact it reads "This screen is in contact with no drone." | `world.currentHub()` |
+| Selected drone panel | Adds a Connection row when not connected, and Radio and Route to base read "unknown". Figures compare with what "this screen has", not what is real | `d.inContact` |
 | Graph | Shows this run only: the two comparison runs can't include a phone, so `reference` is null | `reference` |
-| Drones slider | Starts a new mission, and the phones rejoin by themselves | `?drones=` |
-| Reset, New terrain | Start a new mission in the same way | `?seed=` |
-| Fail buttons | Skip phone drones, which are failed with aeroplane mode on the phone | `d.remote` |
+| Drones slider | Defaults to 15. Starts a new mission, and the phones rejoin by themselves with the same drones | `?drones=`, `&restart=1` |
+| Speed slider | Off, because every device runs on the same clock | |
+| Reset, New terrain | Start a new mission in the same way | `?seed=`, `&restart=1` |
+| Fail buttons | Refused before launch, with a log line. After launch they can't fail a phone drone: Fail the hub and Fail this drone log why instead, and Fail a random drone skips them. Aeroplane mode on the phone cuts the connection, but the drone keeps flying | `world.steps`, `d.remote` |
+
+### After a reload of the big screen
+
+A reload or reopen during a run rejoins it, if it was launched in the last 20 minutes. The page replays the laptop's drones to the shared clock from the seed, with every phone out of contact. Only the seed, swarm size, launch time and claims come from the helper.
+
+| Value | After a rejoin | Read it from |
+|---|---|---|
+| Laptop drones, base's copy | Rebuilt by the replay. Nothing the phones told them before the reload is in it, so they can differ from before until the phones are heard again | `world.drones`, `world.base.state` |
+| Phone drones, their ground and reports | Back with the phones' next messages. Phones keep flying throughout | `world.applyRemote` |
+| Drones failed with a button | Fly again | `d.alive` |
+| Blackout, Cut all radio | Cleared, on the phones too | `world.blackout`, `world.radio` |
+| Range, Ridges block it, Mode | Back to the page's starting values, on the phones too | `world.range`, `world.los`, `world.mode` |
+| Graph markers | Gone. The lines are redrawn by the replay | `marks`, `history` |
+| Field log | Only what the replay logs, then the lines below | `$('log')` |
+
+### Phones card
+
+The note at the bottom says what the map shows and what "Known at base" and the table show. The rest depends on the state:
+
+| State | Shown as | Read it from |
+|---|---|---|
+| Starting | The card stays hidden until the helper answers | |
+| Waiting | QR code and join address. "No phones have joined yet", and the button is off and reads "Waiting for phones" | `/qr.svg`, `mission.joinUrl` |
+| Phones joined | "Drone 1: connected", or in yellow "Drone 1: not connected". The button reads "Launch with 2 phones" | `mission.drones`, `link.connected()` |
+| Launched | QR code, join address and button are hidden. The drone list stays | `mission.launchAt` |
+| A second tab, while a mission flies and the first tab is polling | "Another big screen is running this mission.", with a "Start a new run here" button. The tabs are told apart by an id in `sessionStorage` | `onStopped('busy')` |
+| Replaced by another tab | "Another big screen took over. Close this tab." | `onStopped('replaced')` |
+| Not started by the helper | "Start this page with npm run phones, and open it at localhost on the laptop." | `onStopped('failed')` |
+| Launch refused | "The helper refused the launch. Reload this page." | |
+
+### Extra log lines
+
+| Event | Example |
+|---|---|
+| Ready | Swarm ready over terrain #2026: 15 drones, drone 1 is the hub, 7 missing people |
+| Launch | Launching with 2 phones |
+| Rejoined | This screen rejoined the flying run. It replays the laptop drones, then the phones catch it up. |
+| Tried to fail a drone before launch | The swarm has not launched yet. |
+| Connection lost | Drone 2 is not connected. It keeps flying on its phone; this screen shows where it was last seen. |
+| Connection back | Drone 2 is connected again. This screen now shows the ground it searched; the swarm hears of it over radio. |
+| Tried to fail a phone | Drone 2 is flown by a phone, so this screen can't fail it. Aeroplane mode on the phone cuts its connection, but the drone keeps flying. |
 

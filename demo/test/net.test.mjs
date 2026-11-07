@@ -222,6 +222,29 @@ test('the radio switch stops everything both ways and keeps the link', async () 
   assert.equal(world.connections, before, 'the same link comes back');
 });
 
+test('a device that stalled does not call everyone lost when it wakes', async () => {
+  const { world, a, all } = await linked();
+  world.time += 1500;              // its timers stopped, and messages are still queued
+  a.net.tick();
+  await run(world, all, 400);
+  assert.equal(a.logs.filter((l) => l.includes('LOST')).length, 0);
+});
+
+test('a reloaded offerer is heard even if its clock went backwards', async () => {
+  const { world, b } = await linked();
+  const newer = peer(b, 'a') && world.time + 1;
+  world.queues.set('b', [{ from: 'a', data: { kind: 'offer', gen: newer, boot: 'one', sdp: 'x' } }]);
+  await b.net.poll();
+  await new Promise((done) => setImmediate(done));
+  const pc = new (fakeRtc(world, 'a'))();
+  pc.createDataChannel();
+  await pc.createOffer();
+  world.queues.set('b', [{ from: 'a', data: { kind: 'offer', gen: 5, boot: 'two', sdp: pc.token } }]);
+  await b.net.poll();
+  await new Promise((done) => setImmediate(done));
+  assert.ok(b.logs.at(-1) === 'a: answer sent', 'an old time from a new page still gets an answer');
+});
+
 test('with the helper gone, links carry on', async () => {
   const { world, a, b, all } = await linked();
   const before = world.connections;

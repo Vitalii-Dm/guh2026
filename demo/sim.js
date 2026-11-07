@@ -38,6 +38,7 @@ function message(state) {
  */
 export function createSim({ seed, terrain, drones = N_DRONES, range = 190, los = true, radio = true, speed = SPEED, remoteIds = [], onLog = () => {} }) {
   const ids = Array.from({ length: drones }, (_, i) => i + 1);
+  const outages = {};                // drone id -> how many times it has lost its connection
 
   const sim = {
     tick: 0,
@@ -96,7 +97,7 @@ export function createSim({ seed, terrain, drones = N_DRONES, range = 190, los =
       for (const e of events) {
         const [type, a, b] = e.split(':');
         if (type === 'became-hub') onLog(`<b>Drone ${a} took over as hub</b> (${b}), the lowest live id it can reach`, e);
-        if (type === 'marked-failed') onLog(`Drone ${n.id} has heard nothing of drone ${a} for ${SECONDS(R.DEFAULTS.failTimeout)} s and treats it as failed`, `mf${a}`);
+        if (type === 'marked-failed') onLog(`Drone ${n.id} has heard nothing of drone ${a} for ${SECONDS(R.DEFAULTS.failTimeout)} s and treats it as failed`, `mf${a}${outages[a] ? `o${outages[a]}` : ''}`);
         if (type === 'delivered') onLog(`Report for person ${a} reached base. Rescue team dispatched.`, e);
       }
       if (n !== sim.base && hubStatus === 'suspect' && !R.isHub(n.state) && mode !== 'alone') {
@@ -139,19 +140,25 @@ export function createSim({ seed, terrain, drones = N_DRONES, range = 190, los =
    * update at once, because this is the viewer's picture and no drone acts on
    * it. Its snapshot only reaches other drones in a tick where the radio rule
    * allows it.
-   * @param {{id, tick, x, y, angle, task, hubStatus, mode, snapshot}} m
+   * @param {{id, tick, x, y, angle, task, hubStatus, mode, muling, own, snapshot}} m
    */
   sim.applyRemote = (m) => {
     const d = sim.drones.find((n) => n.id === m.id);
     if (!d?.remote || !d.alive || m.tick < d.lastMessage) return;
-    if (!d.inContact) onLog(`<b>Drone ${d.id} is back in contact</b>`, `back${d.id}t${sim.tick}`);
-    Object.assign(d, { inContact: true, lastMessage: m.tick, x: m.x, y: m.y, angle: m.angle, task: m.task, hubStatus: m.hubStatus, commsMode: m.mode });
+    if (!d.inContact) onLog(`<b>Drone ${d.id} is connected again.</b> This screen now shows the ground it searched; the swarm hears of it over radio.`, `back${d.id}t${sim.tick}`);
+    const hub = m.snapshot.hub, was = d.state.hub;
+    if (hub.id === d.id && hub.epoch > was.epoch) {     // every real takeover raises the epoch
+      onLog(`<b>Drone ${d.id} took over as hub</b> (epoch${hub.epoch}), the lowest live id it can reach`, `became-hub:${d.id}:epoch${hub.epoch}`);
+    }
+    Object.assign(d, { inContact: true, lastMessage: m.tick, x: m.x, y: m.y, angle: m.angle, task: m.task, hubStatus: m.hubStatus, commsMode: m.mode, muling: m.muling ?? false });
     Object.assign(d.state, structuredClone(m.snapshot));
     for (let c = 0; c < COLS; c++) {
       for (let r = 0; r < ROWS; r++) {
         if (!R.isVisited(d.state, c, r)) continue;
         sim.truthVisited.add(`${c},${r}`);
-        if (!sim.searchedBy[r * COLS + c]) { sim.searchedBy[r * COLS + c] = d.id; d.own[r * COLS + c] = 1; }
+        const flown = m.own && R.isVisited({ cols: COLS, visited: m.own }, c, r);
+        if (flown) d.own[r * COLS + c] = 1;
+        if (flown && !sim.searchedBy[r * COLS + c]) sim.searchedBy[r * COLS + c] = d.id;
       }
     }
     for (const s of sim.survivors) {
@@ -165,7 +172,9 @@ export function createSim({ seed, terrain, drones = N_DRONES, range = 190, los =
     const d = sim.drones.find((n) => n.id === id);
     if (!d?.remote || !d.inContact) return;
     d.inContact = false;
-    onLog(`<b>Drone ${id} is out of contact</b>`, `lost${id}t${sim.tick}`);
+    d.commsMode = 'alone';           // as far as this screen can tell
+    outages[id] = (outages[id] ?? 0) + 1;
+    onLog(`<b>Drone ${id} is not connected.</b> It keeps flying on its phone; this screen shows where it was last seen.`, `lost${id}t${sim.tick}`);
   };
 
   /**
@@ -197,9 +206,9 @@ export function createSim({ seed, terrain, drones = N_DRONES, range = 190, los =
   /** The hub most live drones currently believe in. */
   sim.currentHub = () => {
     const votes = {};
-    for (const d of sim.drones) if (d.alive) votes[d.state.hub.id] = (votes[d.state.hub.id] || 0) + 1;
+    for (const d of sim.drones) if (d.alive && d.inContact) votes[d.state.hub.id] = (votes[d.state.hub.id] || 0) + 1;
     const best = Object.entries(votes).sort((a, b) => b[1] - a[1])[0];
-    return best ? Number(best[0]) : null;
+    return best ? Number(best[0]) : null;   // null: no drone alive and in contact
   };
 
   /** Fail a drone. Returns its formation slot, or null if it was already down. */

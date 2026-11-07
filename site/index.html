@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ridgeline</title>
+<meta name="description" content="Search-and-rescue drones that keep working when the mountain cuts the signal.">
+<meta name="theme-color" content="#0b1522">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+
+<!-- The landscape behind the whole page: Langtang range from Dhunche, Rasuwa. -->
+<div class="backdrop" aria-hidden="true">
+  <img class="backdrop-img" src="https://upload.wikimedia.org/wikipedia/commons/thumb/1/16/Mt._Lirung_Langtang.jpg/1920px-Mt._Lirung_Langtang.jpg" alt="" fetchpriority="high">
+  <div class="backdrop-shade"></div>
+  <div class="grain"></div>
+</div>
+
+<header class="bar">
+  <span class="bar-mark">Ridgeline</span>
+  <span class="bar-meta">GreatUniHack 2026 / Neptune North</span>
+</header>
+
+<main>
+
+<!-- 01 · INTRO -->
+<section class="intro" id="intro">
+  <div class="intro-text">
+    <h1 class="wordmark" aria-label="Ridgeline">
+      <span>R</span><span>i</span><span>d</span><span>g</span><span>e</span><span>l</span><span>i</span><span>n</span><span>e</span>
+    </h1>
+    <p class="intro-line">Search-and-rescue drones that keep working when the mountain cuts the signal.</p>
+  </div>
+  <div class="intro-foot mono">
+    <span>28.17° N 85.31° E</span>
+    <span>Langtang range from Dhunche, Rasuwa</span>
+    <span class="scroll-hint">Scroll</span>
+  </div>
+</section>
+
+<!-- 02 · LANGTANG: three beats, one picture each -->
+<section class="event" id="event">
+  <div class="event-head">
+    <p class="mono label">Rasuwa, north of Kathmandu, Nepal</p>
+    <h2 class="date">26 August 2026</h2>
+  </div>
+
+  <div class="event-body">
+    <ol class="beats">
+      <li class="beat" data-media="0">
+        <span class="mono t">08:37</span>
+        <h3>The mountain breaks</h3>
+        <p>Rock and ice fall from Langtang Lirung and dam the river. When the dam bursts, the surge tears down the valley into Nepal.</p>
+      </li>
+      <li class="beat" data-media="1">
+        <span class="mono t">Before 09:00</span>
+        <h3>The valley goes silent</h3>
+        <p>The river rises 9 m in 30 minutes and phone towers go down. People who survived the surge are cut off, and bad weather grounds the helicopters.</p>
+      </li>
+      <li class="beat beat-toll" data-media="2">
+        <span class="mono t">By 5 October</span>
+        <p class="toll"><span class="toll-n" data-count="1455">1,455</span><span class="toll-k">people killed in Nepal</span></p>
+        <p class="toll-sub">5,285 still missing when the search ended.</p>
+      </li>
+    </ol>
+
+    <div class="media" aria-live="polite">
+      <figure class="frame" data-i="0">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/2026_Nepal_floods.gif/960px-2026_Nepal_floods.gif" alt="Security camera footage of the debris surge reaching Gyirong Port">
+        <figcaption class="mono"><span>Security camera at Gyirong Port, on the border, as the surge arrives. Clock shows Beijing time.</span><span>Public domain</span></figcaption>
+        <span class="rec mono">REC</span>
+      </figure>
+      <figure class="frame frame-sat" data-i="1">
+        <img class="sat-before" loading="lazy" src="https://upload.wikimedia.org/wikipedia/commons/4/41/Nepal_floods_before_-_20260812.png" alt="Satellite image of the valley on 12 August, before the flood">
+        <img class="sat-after" loading="lazy" src="https://upload.wikimedia.org/wikipedia/commons/c/c3/Landsat_Nepal_flood_2026-08-26.png" alt="Satellite image of the same valley on 26 August, after the flood">
+        <span class="sat-line"></span>
+        <span class="sat-tag mono sat-tag-a">12 Aug</span>
+        <span class="sat-tag mono sat-tag-b">26 Aug</span>
+        <span class="nosignal mono">No service</span>
+        <figcaption class="mono"><span>The same valley from orbit, before and after.</span><span>Sentinel-2 / Copernicus · Landsat 9 / USGS</span></figcaption>
+      </figure>
+      <figure class="frame frame-dark" data-i="2">
+        <img loading="lazy" src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Bhote_Koshi_Valley%2C_Nepal.jpg/1280px-Bhote_Koshi_Valley%2C_Nepal.jpg" alt="Forested slopes of the Bhote Koshi valley in mist">
+        <figcaption class="mono"><span>Bhote Koshi valley.</span><span>Vyacheslav Argenberg · CC BY 4.0</span></figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- 03 · RESPONSE (3D, driven by scroll) -->
+<section class="response" id="response">
+  <div class="stage">
+    <canvas id="scene3d" aria-label="3D animation: two drones relay a rescue report over a ridge"></canvas>
+    <div class="hud" id="hud" aria-hidden="true"></div>
+    <div class="stage-head">
+      <p class="mono label">What we built</p>
+      <h2>When the signal dies,<br>the drones become the network.</h2>
+    </div>
+    <ol class="captions mono" id="captions" aria-live="polite">
+      <li data-k="0"><b>01</b>Drone A crosses the ridge to search the valley behind it.</li>
+      <li data-k="1"><b>02</b>It spots someone stranded by the water and saves their position.</li>
+      <li data-k="2"><b>03</b>Radio needs a clear line. The ridge is in the way, so base hears nothing.</li>
+      <li data-k="3"><b>04</b>Drone B flies to the crest, where it can see both A and base.</li>
+      <li data-k="4"><b>05</b>The report hops A → B → base. Every drone keeps a copy.</li>
+    </ol>
+    <div class="legend mono" aria-hidden="true"><span><i class="lg-up"></i>Radio link</span><span><i class="lg-cut"></i>Blocked</span></div>
+    <div class="cam" id="cam" aria-hidden="true">
+      <span class="cam-label mono">Drone A · camera</span>
+      <span class="cam-box" id="camBox"><span class="mono">Person</span></span>
+      <span class="cam-rec mono">Position saved</span>
+    </div>
+    <div class="progress" aria-hidden="true"><span id="progressBar"></span></div>
+  </div>
+</section>
+
+<!-- 04 · HAND-OFF -->
+<section class="handoff" id="handoff">
+  <p class="mono label">Next</p>
+  <a class="live-link" href="../demo/">
+    <span>The live system</span>
+    <svg viewBox="0 0 48 24" aria-hidden="true"><path d="M0 12h44M34 2l10 10-10 10" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+  </a>
+  <p class="mono handoff-meta">Nine drones, no leader. Fail any of them.</p>
+</section>
+
+<!-- 05 · REAL-WORLD APPLICATIONS (for Q&A) -->
+<section class="uses" id="uses">
+  <div class="uses-head">
+    <p class="mono label">Real-world applications</p>
+    <h2>Four more places the network breaks.</h2>
+  </div>
+  <div class="use-grid">
+    <article class="use" data-use="defence">
+      <figure class="use-media">
+        <img loading="lazy" src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/National_Training_Center_RQ-11_Raven_exercise_140419-A-QU939-271.jpg/1280px-National_Training_Center_RQ-11_Raven_exercise_140419-A-QU939-271.jpg" alt="A soldier runs after launching an RQ-11 Raven drone over a desert hill" style="object-position:50% 40%">
+        <canvas aria-hidden="true"></canvas>
+        <span class="use-status mono"></span>
+        <figcaption class="mono">US Army · public domain</figcaption>
+      </figure>
+      <div class="use-text">
+        <span class="mono use-n">01 · Defence</span>
+        <h3>When the link is jammed</h3>
+        <dl>
+          <dt class="mono">Today</dt><dd>A jammed drone loses its operator and the footage it was sending.</dd>
+          <dt class="mono">With the swarm</dt><dd>Drones outside the jammed zone pass its data home, hop by hop.</dd>
+        </dl>
+      </div>
+    </article>
+    <article class="use" data-use="show">
+      <figure class="use-media">
+        <img loading="lazy" src="https://upload.wikimedia.org/wikipedia/commons/thumb/0/08/Hungarian_Parliament_drone_show_with_miracle_stag.jpg/1280px-Hungarian_Parliament_drone_show_with_miracle_stag.jpg" alt="A drone light show drawing a stag above the Hungarian Parliament at night" style="object-position:50% 30%">
+        <canvas aria-hidden="true"></canvas>
+        <span class="use-status mono"></span>
+        <figcaption class="mono">Envagyokabela · CC BY-SA 4.0</figcaption>
+      </figure>
+      <div class="use-text">
+        <span class="mono use-n">02 · Drone shows</span>
+        <h3>When lights drop out</h3>
+        <dl>
+          <dt class="mono">Today</dt><dd>A drone that fails leaves a hole in the picture, in front of the whole crowd.</dd>
+          <dt class="mono">With the swarm</dt><dd>Its neighbours close the gap on their own, the same self-repair our drones compute.</dd>
+        </dl>
+      </div>
+    </article>
+    <article class="use" data-use="sport">
+      <figure class="use-media">
+        <img loading="lazy" src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d9/Alpe_d%27Huez_-_Tour_de_France_2008.jpg/1280px-Alpe_d%27Huez_-_Tour_de_France_2008.jpg" alt="Crowds lining the hairpin road up Alpe d'Huez during the Tour de France" style="object-position:50% 58%">
+        <canvas aria-hidden="true"></canvas>
+        <span class="use-status mono"></span>
+        <figcaption class="mono">Alpe d’Huez, Tour de France · Zehnfinger · CC BY-SA 3.0</figcaption>
+      </figure>
+      <div class="use-text">
+        <span class="mono use-n">03 · Sport</span>
+        <h3>When the race climbs out of range</h3>
+        <dl>
+          <dt class="mono">Today</dt><dd>Live pictures from mountain stages go through relay helicopters and planes circling overhead.</dd>
+          <dt class="mono">With the swarm</dt><dd>A chain of drones over the climb carries the feed from the riders to the TV truck.</dd>
+        </dl>
+      </div>
+    </article>
+    <article class="use" data-use="blackout">
+      <figure class="use-media">
+        <img loading="lazy" src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Madrid_blackout_%E2%80%93_Preciados_Street%2C_April_2025.jpg/1280px-Madrid_blackout_%E2%80%93_Preciados_Street%2C_April_2025.jpg" alt="Madrid's Preciados Street in darkness during the April 2025 blackout, lit by phone torches" style="object-position:50% 62%">
+        <canvas aria-hidden="true"></canvas>
+        <span class="use-status mono"></span>
+        <figcaption class="mono">Madrid, 28 April 2025 · Danieltarrino · CC BY 4.0</figcaption>
+      </figure>
+      <div class="use-text">
+        <span class="mono use-n">04 · Blackouts</span>
+        <h3>When the towers go dark</h3>
+        <dl>
+          <dt class="mono">Today</dt><dd>The EU, the UK and France tell households to be ready to cope alone for 72 hours.</dd>
+          <dt class="mono">With the swarm</dt><dd>Drones pick up calls for help from phones on the street and carry them to the crews.</dd>
+        </dl>
+      </div>
+    </article>
+  </div>
+</section>
+
+</main>
+
+<footer class="credits mono">
+  <span>Background: Langtang range from Dhunche, Rajivkilanashrestha, CC BY-SA 4.0.</span>
+  <span>Figures: Wikipedia, “2026 Nepal–Tibet floods”; Al Jazeera, 27 Aug 2026; Kathmandu Post, 26 Aug 2026. 72 h: EU Preparedness Union Strategy, Mar 2025.</span>
+</footer>
+
+<script type="module" src="main.js"></script>
+<script type="module" src="usecases.js"></script>
+</body>
+</html>
