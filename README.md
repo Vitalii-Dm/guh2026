@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/images/hero.jpg" alt="Ridgeline presentation: the Langtang range from Dhunche, Nepal" width="100%">
+
 # Ridgeline
 
 **A rescue drone swarm that keeps searching when the mountain cuts the signal.**
@@ -27,7 +29,13 @@ Ridgeline is built for exactly that moment.
 
 <sub>Sources: Wikipedia, *2026 Nepal–Tibet floods*; Al Jazeera, 27 Aug 2026; Kathmandu Post, 26 Aug 2026.</sub>
 
+<img src="docs/images/toll.jpg" alt="Presentation site: 1,455 people killed in Nepal, 5,285 still missing" width="100%">
+
 ## How it works
+
+<img src="docs/images/relay.jpg" alt="3D rescue scene: the ridge blocks drone A, so drone B on the crest relays the report to base" width="100%">
+
+<p align="center"><sub>The presentation's 3D scene: the ridge blocks drone A's radio, so drone B climbs to the crest and relays the report to base.</sub></p>
 
 ```mermaid
 flowchart LR
@@ -62,6 +70,17 @@ A full message is up to about 1.4 KB for 15 drones with 7 reports. The full desi
 | 📱 | **Phones as drones**: up to three iPhones fly real drones in the swarm. Turn on aeroplane mode and the phone keeps searching alone; turn it off and what it found spreads through the swarm. | [`demo/phone.html`](demo/phone.html) · [design doc](docs/designs/phone-drones.md) |
 
 The search graph compares the run you're watching with two hidden runs on the same terrain: one with radio on and nothing failed, one with no radio at all.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/images/demo-3d-search.jpg" alt="3D simulation mid-search: drones fan out, some with no route to base"></td>
+<td width="50%"><img src="docs/images/demo-3d-complete.jpg" alt="3D simulation complete: all 7 people found and reported, gecko network restored"></td>
+</tr>
+<tr>
+<td><sub><b>Mid-search.</b> Drones behind the ridge have no route to base but keep searching; 2 are fully cut off.</sub></td>
+<td><sub><b>Done.</b> All 7 people reported to base, 100% searched, and the gecko network panel shows the formation restored.</sub></td>
+</tr>
+</table>
 
 ## Run it
 
@@ -212,6 +231,8 @@ Covers swarm merging, hub takeover, the network runtime, the simulation, device 
 ## Real-world applications
 
 The same idea works anywhere a network can fail. The presentation site shows each one over a real photo:
+
+<img src="docs/images/applications.jpg" alt="Real-world applications: defence under jamming and drone shows, with live overlays" width="100%">
 
 | | Where | Today | With the swarm |
 |---|---|---|---|
