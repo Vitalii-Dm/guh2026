@@ -3,7 +3,9 @@
 import * as R from '../recovery/swarm-recovery.js';
 import { NCA } from '../recovery/nca-runtime.js';
 import { makeTerrain } from './terrain.js';
-import { W, H, CELL, COLS, ROWS, N_SURVIVORS, SENSE, BASE, DT, createSim } from './sim.js';
+import { W, H, CELL, COLS, ROWS, N_DRONES, N_SURVIVORS, SENSE, BASE, DT, createSim } from './sim.js';
+import { PHONE_SPEED } from './mission.js';
+import { createPhoneLink } from './phone-link.js';
 
 const canvas = document.getElementById('map');
 const ctx = canvas.getContext('2d');
@@ -13,12 +15,17 @@ const SECONDS_PER_TICK = 0.16;
 const NCA_FRAMES_PER_STEP = 4;  // slow enough to watch the gecko repair
 const MODE_COLOUR = { hub: '#2bb3a8', neighbours: '#f29e4c', alone: '#e5534b' };
 const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const phoneMode = params.has('phones');   // ?phones=1: some drones fly on phones
+if (phoneMode) $('drones').value = Number(params.get('drones')) || N_DRONES;
+const MAX_STEPS_PER_FRAME = 3000;         // catching up after the tab was hidden
 
 // `world` is the run on screen. The two reference runs share its terrain and
 // survivors and play alongside it, unseen, for the graph to compare against.
 let world, reference, logged, history, marks;
 let mode = 'search';
-let terrainSeed = 2026;
+let terrainSeed = Number(params.get('seed')) || 2026;
+let link = null;                // phone mode only
 const fog = document.createElement('canvas');
 fog.width = COLS; fog.height = ROWS;
 const fogCtx = fog.getContext('2d');
@@ -31,11 +38,13 @@ function reset() {
   const los = $('los').checked;
   const drones = +$('drones').value;
   $('dronesV').textContent = drones;
-  $('introDrones').textContent = drones;
+  if (!phoneMode) $('introDrones').textContent = drones;
   $('seedV').textContent = terrainSeed;
-  world = createSim({ seed: terrainSeed, terrain, drones, range, los, onLog: log });
+  const phoneOptions = phoneMode ? { speed: PHONE_SPEED, remoteIds: link?.claimed() ?? [] } : {};
+  world = createSim({ seed: terrainSeed, terrain, drones, range, los, onLog: log, ...phoneOptions });
   world.mode = mode;
-  reference = {
+  // The comparison runs can't include a phone, so phone mode leaves them out.
+  reference = phoneMode ? null : {
     on: createSim({ seed: terrainSeed, terrain, drones, range, los }),
     off: createSim({ seed: terrainSeed, terrain, drones, radio: false }),
   };
@@ -46,7 +55,7 @@ function reset() {
   $('cutRadio').textContent = 'Cut all radio';
   $('log').innerHTML = '';
   select(null);
-  log(`Swarm launched over terrain #${terrainSeed}: ${drones} drones, drone 1 is the hub, ${N_SURVIVORS} missing people`);
+  log(`${phoneMode ? 'Swarm ready' : 'Swarm launched'} over terrain #${terrainSeed}: ${drones} drones, drone 1 is the hub, ${N_SURVIVORS} missing people`);
   if (nca) nca.reset();
   ncaWatch = null;
 }
@@ -63,6 +72,7 @@ function log(msg, key) {
 // ---------------------------------------------------------------- input
 function fail(d) {
   if (!d || !d.alive) return;
+  if (d.remote) { log(`Drone ${d.id} is flown by a phone: fail it from there, with aeroplane mode`); return; }
   const wasHub = world.currentHub() === d.id;
   const slot = world.fail(d, performance.now());
   if (d === selected) select(null);
@@ -129,7 +139,7 @@ $('failHub').onclick = () => {
   const hub = world.drones.find((d) => d.id === world.currentHub());
   if (hub?.alive) fail(hub); else log('The hub is already down — no drone has taken over yet');
 };
-$('failRandom').onclick = () => { const live = world.drones.filter((d) => d.alive); fail(live[Math.floor(Math.random() * live.length)]); };
+$('failRandom').onclick = () => { const live = world.drones.filter((d) => d.alive && !d.remote); fail(live[Math.floor(Math.random() * live.length)]); };
 $('paint').onclick = () => setPainting(!painting);
 $('clearBlackout').onclick = () => { world.clearBlackout(); marks.push({ tick: world.tick, label: 'blackout lifted' }); };
 $('cutRadio').onclick = () => {
@@ -138,11 +148,17 @@ $('cutRadio').onclick = () => {
   $('cutRadio').textContent = world.radio ? 'Cut all radio' : 'Restore radio';
   marks.push({ tick: world.tick, label: world.radio ? 'radio back' : 'radio cut' });
 };
-$('reset').onclick = reset;
-$('drones').oninput = reset;
-$('newTerrain').onclick = () => { terrainSeed = Math.floor(Math.random() * 1e6); reset(); };
-$('range').oninput = (e) => { range = +e.target.value; $('rangeV').textContent = range; world.range = range; reference.on.range = range; };
-function setLos(on) { world.los = on; reference.on.los = on; }
+// A phone-mode run can't restart in place: the phones have to join a new mission.
+$('reset').onclick = phoneMode ? () => location.reload() : reset;
+// Every device must agree on the swarm's size, so in phone mode a change starts a new mission.
+const restartPhones = () => { location.search = `?phones=1&seed=${terrainSeed}&drones=${$('drones').value}`; };
+if (phoneMode) $('drones').onchange = restartPhones; else $('drones').oninput = reset;
+$('newTerrain').onclick = () => {
+  terrainSeed = Math.floor(Math.random() * 1e6);
+  if (phoneMode) restartPhones(); else reset();
+};
+$('range').oninput = (e) => { range = +e.target.value; $('rangeV').textContent = range; world.range = range; if (reference) reference.on.range = range; };
+function setLos(on) { world.los = on; if (reference) reference.on.los = on; }
 $('los').onchange = (e) => setLos(e.target.checked);
 for (const el of document.querySelectorAll('input[name=mode]')) {
   el.onchange = (e) => {
@@ -271,7 +287,15 @@ function draw() {
   for (const d of live) {
     const n = R.liveIds(d.state).length;
     ctx.globalAlpha = selected && d !== selected ? 0.3 : 1;
+    if (d.remote && !d.inContact) ctx.globalAlpha = 0.45;
     drawDrone(d, hue(ranks(d), n));
+    if (d.remote) {
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = d.inContact ? '#ffffff' : '#e5534b'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
+      ctx.beginPath(); ctx.arc(d.x, d.y, SENSE + 5, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = d.inContact ? '#ffffff' : '#ff8c82'; ctx.font = '700 10px system-ui';
+      ctx.fillText(d.inContact ? 'PHONE' : 'PHONE: NO CONTACT', d.x, d.y - 26);
+    }
     if (d === selected) {
       ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5;
       ctx.beginPath(); ctx.arc(d.x, d.y, SENSE + 5, 0, Math.PI * 2); ctx.stroke();
@@ -357,7 +381,7 @@ const SERIES = [
   { key: 'base', label: 'Known at base, this run', colour: '#c47a12', dash: [] },
   { key: 'on', label: 'Searched, comms on, nothing failed', colour: '#5b92e0', dash: [6, 4] },
   { key: 'off', label: 'Searched, no radio from launch', colour: '#d45fa0', dash: [2, 4] },
-];
+].filter((s) => !phoneMode || s.key === 'run' || s.key === 'base');
 const graph = $('graph'), gctx = graph.getContext('2d');
 const PAD = { l: 34, r: 10, t: 16, b: 20 };
 let hoverX = null;
@@ -369,8 +393,8 @@ function sample() {
     tick: world.tick,
     run: world.coverage() * 100,
     base: world.baseCoverage() * 100,
-    on: reference.on.coverage() * 100,
-    off: reference.off.coverage() * 100,
+    on: reference && reference.on.coverage() * 100,
+    off: reference && reference.off.coverage() * 100,
   };
   history.push(point);
   for (const s of SERIES) $(`gv-${s.key}`).textContent = `${Math.round(point[s.key])}%`;
@@ -468,15 +492,24 @@ $('ncaReset').onclick = () => { if (nca) nca.reset(); ncaWatch = null; };
 
 // ---------------------------------------------------------------- loop
 let frame = 0, lastFrame = 0, owed = 0;
+function stepOnce() {
+  const before = world.tick;
+  world.step();
+  if (reference) { reference.on.step(); reference.off.step(); }
+  if (world.tick !== before) {
+    updateStats();
+    if (world.tick % SAMPLE_TICKS === 0) sample();
+    link?.sendTick();
+  }
+}
 function loop(t) {
-  owed += Math.min(0.1, (t - (lastFrame || t)) / 1000); lastFrame = t;
-  for (; owed >= DT; owed -= DT) {
-    const before = world.tick;
-    world.step(); reference.on.step(); reference.off.step();
-    if (world.tick !== before) {
-      updateStats();
-      if (world.tick % SAMPLE_TICKS === 0) sample();
-    }
+  if (phoneMode) {
+    // Every device works out the tick from the launch time, so they stay together.
+    const target = link.targetSteps();
+    for (let n = 0; target !== null && world.steps < target && n < MAX_STEPS_PER_FRAME; n++) stepOnce();
+  } else {
+    owed += Math.min(0.1, (t - (lastFrame || t)) / 1000); lastFrame = t;
+    for (; owed >= DT; owed -= DT) stepOnce();
   }
   draw();
   drawGraph();
@@ -486,6 +519,40 @@ function loop(t) {
     if (frame % 15 === 0) $('ncaSim').textContent = `shape restored: ${Math.round(nca.similarity() * 100)}%`;
   }
   requestAnimationFrame(loop);
+}
+// ---------------------------------------------------------------- phone mode
+function updatePhones(mission, connected) {
+  $('phonesCard').hidden = false;
+  const url = mission?.joinUrl;
+  if (url && $('joinUrl').textContent !== url) {
+    $('joinUrl').textContent = url; $('joinUrl').href = url;
+    $('qr').src = '/qr.svg'; $('qr').hidden = false;
+  }
+  const claimed = mission?.drones ?? [];
+  $('phoneList').textContent = claimed.length
+    ? claimed.map((d) => `Drone ${d}: ${connected.includes(d) ? 'linked' : 'not linked'}`).join(' · ')
+    : 'No phones have joined yet';
+  const launched = mission?.launchAt != null;
+  $('launch').disabled = launched || !mission;
+  $('launch').textContent = launched ? 'Launched' : `Launch with ${claimed.length} ${claimed.length === 1 ? 'phone' : 'phones'}`;
+}
+
+if (phoneMode) {
+  $('introDrones').parentElement.textContent = `Phones fly up to three of the ${$('drones').value} drones and the laptop flies the rest. Each phone runs its own drone, so aeroplane mode is a real network failure and the phone keeps searching. Flight, sensors and the people are simulated.`;
+  link = createPhoneLink({
+    seed: terrainSeed,
+    fleet: +$('drones').value,
+    onUpdate: updatePhones,
+    onError: () => { $('phonesCard').hidden = false; $('phoneList').textContent = 'Start this page with: npm run phones'; },
+  });
+  $('launch').onclick = async () => {
+    $('launch').disabled = true;
+    await link.launch();
+    reset();
+    link.attach(world);
+    const n = link.claimed().length;
+    log(`Launching with ${n} ${n === 1 ? 'phone' : 'phones'}`);
+  };
 }
 reset();
 requestAnimationFrame(loop);

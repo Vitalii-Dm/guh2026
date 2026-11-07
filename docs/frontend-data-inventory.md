@@ -185,3 +185,19 @@ These would need a small simulation change before they could be shown.
 | Radio range (px) | Slider, 40 to 320, default 190 | Applies live |
 | Ridges block radio | Checkbox, default on | Applies live |
 | Regrow from one cell | Button on the gecko card | Restarts the gecko |
+
+## Phone mode
+
+`demo/?phones=1` runs some drones on phones. The layout gains a Phones card, and these values change meaning:
+
+| Value | Change in phone mode | Read it from |
+|---|---|---|
+| Phones card | QR code, join address, which drones are linked, and the Launch button | `/qr.svg`, `/mission` |
+| Dashed ring, "PHONE" | This drone is flown by a phone. Red, "PHONE: NO CONTACT", when its connection is lost | `d.remote`, `d.inContact` |
+| Reality | The laptop can't see a phone offline, so `world.truthVisited`, `s.foundBy` and a phone drone's position mean "everything received so far". The map fills in when a phone reconnects | `world.truthVisited` |
+| One drone's copy, for a phone drone | What that phone last said, not live. It freezes during an outage | `d.state` |
+| Graph | Shows this run only: the two comparison runs can't include a phone, so `reference` is null | `reference` |
+| Drones slider | Starts a new mission, and the phones rejoin by themselves | `?drones=` |
+| Reset, New terrain | Start a new mission in the same way | `?seed=` |
+| Fail buttons | Skip phone drones, which are failed with aeroplane mode on the phone | `d.remote` |
+
