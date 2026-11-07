@@ -6,7 +6,7 @@ Two plain ES modules, no dependencies, no build step. Drop this folder into the 
 |---|---|---|
 | `swarm-recovery.js` | light | Shared swarm state, merge, hub takeover, hop counts, comms modes, home strips, formation slots |
 | `nca-runtime.js` | light | Runs the trained "gecko" network in the browser (plain JS) |
-| `models/formation-nca.json` | ~100 KB | Trained weights. Rebuild with `python3 nca/train_nca.py` |
+| `models/formation-nca.json` | ~100 KB | Trained weights. To rebuild, see "Retrain the network" in the [main README](../README.md) |
 
 ## Use in the simulation (each tick)
 
@@ -59,7 +59,7 @@ nca.views.get(id);                     // drone `id`'s own copy of the grid, for
 ES modules don't load from `file://`, so serve the repo root:
 
 ```bash
-python3 -m http.server 8080
+python3 serve.py
 ```
 
 Then open http://localhost:8080/demo/
@@ -70,7 +70,7 @@ Then open http://localhost:8080/demo/
 npm test
 ```
 
-They check that merging is order-independent and that a hub failure gives exactly one new hub. They also check that a report from a drone that later fails still reaches base, that a split swarm comes back to one hub, and that the JS network matches PyTorch. `demo/test/` runs the real simulation headless: blackouts, line of sight, reports getting home after their finders fail.
+They check that merging is order-independent and that a hub failure gives exactly one new hub. They also check that a report from a drone that later fails still reaches base, that a split swarm comes back to one hub, and that the JS network matches PyTorch. `demo/test/` runs the real simulation headless: blackouts, line of sight, reports getting home after their finders fail. It also covers the phone code, the links and the helper.
 
 ## Tunables
 

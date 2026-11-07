@@ -52,7 +52,7 @@ The rules above apply in every mode, so a drone never waits for an answer. The m
 
 Hop count to base isn't merged. Each drone recomputes it from its neighbours every tick (`updateHops`). It decides whether a drone needs to carry a report. Reports themselves spread by gossip, so they don't travel along the gradient.
 
-A full message is about 1.3 KB for 15 drones with all 7 reports on the 44 x 30 grid. It goes to each neighbour up to 4 times per 160 ms tick, so about 30 KB/s per neighbour. That suits Wi-Fi-class links, not LoRa.
+A full message is about 1.4 KB for 15 drones with all 7 reports on the 44 x 30 grid. It goes to each neighbour up to 4 times per 160 ms tick, so about 35 KB/s per neighbour. That suits Wi-Fi-class links, not LoRa.
 
 ### Taking over as hub
 
@@ -72,7 +72,7 @@ The hub role doesn't change any drone's behaviour. Search, reports and mules all
 
 - **Dedicated backup drone:** it's one more thing to lose. Every drone holds a copy instead.
 - **Recomputing strips from the live roster:** cut-off drones marked everyone failed, took the whole map and re-swept each other's ground. Coverage stalled around 28% in a blackout at tick 60. Fixed strips reach 98-100% (8 terrains, measured by hand). Formation mode still works this way, so false failures can move its slots.
-- **Delta gossip:** less to send, but it needs per-neighbour tracking. A 1.3 KB full message makes that unnecessary in a simulation; real low-bandwidth radio would need it.
+- **Delta gossip:** less to send, but it needs per-neighbour tracking. A 1.4 KB full message makes that unnecessary in a simulation; real low-bandwidth radio would need it.
 - **Quorum-based election:** avoids two hubs, but leaves a split swarm with none. As the hub is display-only, two hubs for a while do no harm.
 
 ### Seeing what each drone knows
@@ -115,4 +115,4 @@ On the map, dots fly along radio links when news crosses them: orange for a foun
 
 The demo already contains working versions of the main plan's parts: simulation and UI, sector split, drone policy, line of sight, blackout tools and the live graph. Anyone with their own version should agree with me how to merge it.
 
-The protocol contract is `step(state, inbox, now)`, where `inbox` is the `snapshot()` of each neighbour in radio range. See `recovery/README.md`. The decision rules above are in `chooseTarget` in `demo/sim.js`, which also runs the extra relay rounds per tick.
+The protocol contract is `step(state, inbox, now)`, where `inbox` is the `snapshot()` of each neighbour in radio range. See `recovery/README.md`. The decision rules above are in `chooseTarget` in `demo/drone.js`. `demo/sim.js` runs the extra relay rounds per tick.

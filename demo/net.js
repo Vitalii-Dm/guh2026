@@ -7,8 +7,11 @@ const SILENCE_MS = 1000;         // a peer is lost after this long with no messa
 const HIDDEN_SILENCE_MS = 5000;  // the same for a peer whose page is hidden, as its timers slow down
 const REBUILD_AFTER_MS = 2000;   // how long a link must be silent before replacing it
 const REOFFER_MS = 4000;         // gap between attempts to rebuild
-const GATHER_MS = 2500;          // longest wait for this device's addresses
+const GATHER_MS = 1000;          // longest wait for this device's addresses. Local ones arrive in milliseconds
 const POLL_MS = 500;             // how often to ask the helper for offers
+const POLL_TIMEOUT_MS = 2000;    // give up on a request after this long
+const STALL_MS = 500;            // a gap this long between ticks means this device stopped, not its peers
+const HIDDEN_STALL_MS = 3000;    // the same while hidden, as a hidden page's timers run about once a second
 const PING_MS = 160;             // one swarm tick
 const ROUTE_MS = 1000;           // how often to read a link's route
 const MAX_BUFFERED = 64 * 1024;  // stop queueing on a link that has stalled
@@ -30,12 +33,14 @@ export function createNet({
   now = Date.now,
   isHidden = () => globalThis.document?.hidden ?? false,
 }) {
+  const boot = Math.random().toString(36).slice(2);   // tells peers this page is a new one
   const peers = new Map();
+  const timers = [];
   const messageHandlers = [], peerHandlers = [];
   let listed = new Set();     // devices the helper says are around
   let helperUp = null;
   let radioOn = true, radioOnAt = 0;
-  let wasHidden = false, judgeFrom = 0;
+  let judgeFrom = 0, lastTick = 0, polling = false, stopped = false;
 
   function peerFor(id) {
     if (!peers.has(id)) {
@@ -108,16 +113,18 @@ export function createNet({
     p.pending = { pc, ch: pc.createDataChannel('swarm'), gen };
     await pc.setLocalDescription(await pc.createOffer());
     await gathered(pc);
-    if (p.pending?.gen !== gen) return;
-    await post(p.id, { kind: 'offer', gen, sdp: pc.localDescription.sdp });
+    if (stopped || p.pending?.gen !== gen) return;
+    await post(p.id, { kind: 'offer', gen, boot, sdp: pc.localDescription.sdp });
     onLog(`${p.id}: offer sent`);
   }
 
-  async function onOffer(p, { gen, sdp }) {
+  async function onOffer(p, { gen, boot: peerBoot, sdp }) {
+    if (peerBoot !== p.boot) { p.boot = peerBoot; p.gen = 0; }   // a reloaded page's clock may be behind
     if (!radioOn || gen <= p.gen) return;
     // A late offer must not tear down a link that works. A peer that really
     // can't hear us keeps offering, so a working link gives way on a repeat.
-    if (p.up && ++p.offersWhileUp < OFFERS_BEFORE_REPLACING) return onLog(`${p.id}: offer ignored, link is up`);
+    const heardLately = now() - p.lastHeard < SILENCE_MS;
+    if (p.up && heardLately && ++p.offersWhileUp < OFFERS_BEFORE_REPLACING) return onLog(`${p.id}: offer ignored, link is up`);
     p.offersWhileUp = 0;
     p.gen = gen;
     p.incoming?.close();
@@ -131,6 +138,7 @@ export function createNet({
     await pc.setRemoteDescription({ type: 'offer', sdp });
     await pc.setLocalDescription(await pc.createAnswer());
     await gathered(pc);
+    if (p.gen !== gen) return;      // a newer offer replaced this one while it waited
     await post(p.id, { kind: 'answer', gen, sdp: pc.localDescription.sdp });
     onLog(`${p.id}: answer sent`);
   }
@@ -144,37 +152,45 @@ export function createNet({
   }
 
   async function poll() {
+    if (polling || stopped) return;
+    polling = true;
     try {
-      const res = await request(`/signal?for=${selfId}`);
+      const res = await request(`/signal?for=${selfId}`, { signal: AbortSignal.timeout?.(POLL_TIMEOUT_MS) });
+      if (stopped) return;
       const { messages, peers: ids } = await res.json();
       if (helperUp !== true) onLog('helper reachable');
       helperUp = true;
       listed = new Set(ids);
       for (const id of ids) peerFor(id);
+      // Not awaited: an answer must not wait behind another peer's address gathering.
       for (const { from, data } of messages) {
         const handle = data.kind === 'offer' ? onOffer : onAnswer;
-        await handle(peerFor(from), data).catch((e) => onLog(`${from}: ${data.kind} failed: ${e.message}`));
+        handle(peerFor(from), data).catch((e) => onLog(`${from}: ${data.kind} failed: ${e.message}`));
       }
     } catch {
       if (helperUp !== false) onLog('helper not reachable');
       helperUp = false;
+    } finally {
+      polling = false;
     }
   }
 
   function tick() {
     const t = now();
     const hidden = isHidden();
-    // Silence means nothing while our own timers are slowed, or just after.
-    if (wasHidden && !hidden) judgeFrom = t + SILENCE_MS;
-    wasHidden = hidden;
+    // Silence means nothing while this device was stopped or slowed, or just after.
+    if (lastTick && t - lastTick >= (hidden ? HIDDEN_STALL_MS : STALL_MS)) judgeFrom = t + SILENCE_MS;
+    lastTick = t;
     const canJudge = radioOn && !hidden && t >= judgeFrom;
 
     for (const p of peers.values()) {
       if (radioOn) write(p, { ping: t, hidden });
       const limit = p.peerHidden ? HIDDEN_SILENCE_MS : SILENCE_MS;
-      if (canJudge && p.up && t - p.lastHeard >= limit) setUp(p, false);
+      // A closed channel needs no judging, so a hidden device still acts on it.
+      const closed = p.link && p.link.ch.readyState !== 'open' && p.link.ch.readyState !== 'connecting';
+      if (p.up && radioOn && (closed || (canJudge && t - p.lastHeard >= limit))) setUp(p, false);
       const stale = t - Math.max(p.lastHeard, radioOnAt) >= REBUILD_AFTER_MS;
-      if (canJudge && !p.up && stale && helperUp && listed.has(p.id) && selfId < p.id && t - p.lastOffer >= REOFFER_MS) {
+      if (radioOn && t >= judgeFrom && !p.up && stale && helperUp && listed.has(p.id) && selfId < p.id && t - p.lastOffer >= REOFFER_MS) {
         offer(p).catch((e) => onLog(`${p.id}: offer failed: ${e.message}`));
       }
     }
@@ -201,11 +217,19 @@ export function createNet({
     /** Begin finding and keeping links. */
     start() {
       const onOnline = () => { for (const p of peers.values()) p.lastOffer = 0; poll(); };
+      const onVisibility = () => { if (radioOn && !stopped) for (const p of peers.values()) write(p, { ping: now(), hidden: isHidden() }); };
       globalThis.addEventListener?.('online', onOnline);
-      setInterval(poll, POLL_MS);
-      setInterval(tick, PING_MS);
-      setInterval(() => readRoutes().catch(() => {}), ROUTE_MS);
+      // Tell peers before this page freezes, so they allow it the longer limit.
+      globalThis.document?.addEventListener('visibilitychange', onVisibility);
+      timers.push(setInterval(poll, POLL_MS), setInterval(tick, PING_MS), setInterval(() => readRoutes().catch(() => {}), ROUTE_MS));
       poll();
+    },
+
+    /** Stop for good: this page is no longer part of the mission. */
+    stop() {
+      stopped = true;
+      timers.splice(0).forEach(clearInterval);
+      for (const p of peers.values()) { p.link?.pc.close(); p.pending?.pc.close(); p.incoming?.close(); }
     },
 
     /** Send to every linked device. */

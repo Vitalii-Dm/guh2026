@@ -89,7 +89,7 @@ test('reconnecting brings back the ground, clears the failure, and rejoins a hub
   run(1);
   assert.equal(mirror.inContact, true);
   for (const [c, r] of unseen) assert.ok(sim.truthVisited.has(`${c},${r}`), 'the map fills in at once');
-  assert.ok(logs.some((l) => l.includes('back in contact')));
+  assert.ok(logs.some((l) => l.includes('connected again')));
 
   run(seconds(5));
   assert.ok(core.heardCount > 0);
@@ -189,6 +189,125 @@ test('a phone in a smaller swarm agrees with the big screen about strips', () =>
     assert.deepEqual(R.homeSector(core.drone.state, id, COLS), R.homeSector(mirror.state, id, COLS));
     assert.deepEqual([core.drone.x, core.drone.y], [mirror.x, mirror.y]);
   }
+});
+
+test('a phone winning the hub election shows on the big screen', () => {
+  const terrain = makeTerrain(SEED, W, H, BASE);
+  const logs = [];
+  const sim = createSim({ seed: SEED, terrain, speed: SPEED, remoteIds: [2], onLog: (m) => logs.push(m) });
+  const message = { id: 2, tick: 5, x: 1, y: 1, angle: 0, task: 't', hubStatus: 'ok', mode: 'hub', snapshot: { ...R.snapshot(sim.drones[1].state), hub: { id: 2, epoch: 1 } } };
+  sim.applyRemote(message);
+  assert.ok(logs.some((l) => l.includes('Drone 2 took over as hub')));
+});
+
+test('the big screen does not report a lost phone as live', () => {
+  const t = setup();
+  t.run(seconds(5));
+  t.goOffline();
+  assert.equal(t.mirror.commsMode, 'alone');
+  assert.ok(t.logs.some((l) => l.includes('not connected')));
+  const hubs = t.sim.drones.filter((d) => d.id !== PHONE);
+  hubs.forEach((d) => { d.state.hub = { id: 3, epoch: 9 }; });
+  t.mirror.state.hub = { id: PHONE, epoch: 99 };
+  assert.equal(t.sim.currentHub(), 3, 'its last word on the hub gets no vote');
+});
+
+test('a second outage on the same phone is logged too', () => {
+  const t = setup();
+  t.run(seconds(5));
+  for (let i = 0; i < 2; i++) {
+    t.goOffline();
+    t.run(seconds(20));
+    t.net.online = true;
+    t.run(seconds(10));
+  }
+  assert.ok(t.logs.filter((l) => l.includes(`of drone ${PHONE} for`)).length >= 2);
+});
+
+test('cells explored alone counts only what the drone flew over, not what it merged', () => {
+  const t = setup();
+  t.run(seconds(40));
+  const before = t.core.firstLook;
+  t.net.online = false;
+  t.core.offline = true;
+  t.run(seconds(30));
+  const alone = t.core.firstLook - before;
+  assert.ok(alone > 0 && alone < 40, `${alone} cells`);
+  t.core.offline = false;
+  t.net.online = true;
+  const known = R.visitedCount(t.phone.state);
+  t.run(seconds(2));
+  assert.ok(R.visitedCount(t.phone.state) > known + 40, 'the merge brings in far more');
+  assert.ok(t.core.firstLook - before < alone + 10, 'but the count does not jump with it');
+  assert.equal(t.core.offlineCells.reduce((n, v) => n + v, 0), alone);
+});
+
+test('what the phone flew over and its mule state reach the big screen', () => {
+  const t = setup();
+  t.run(seconds(20));
+  const flown = t.mirror.own.reduce((n, v) => n + v, 0);
+  assert.equal(flown, R.visitedCount(t.core.own));
+  t.sim.applyRemote({ ...JSON.parse(JSON.stringify(t.core.advance(t.sim.tick + 1))), muling: true });
+  assert.equal(t.mirror.muling, true);
+});
+
+test('a message that misses a tick does not read as silence', () => {
+  const terrain = makeTerrain(SEED, W, H, BASE);
+  const p = createPhoneDrone({ id: 2, seed: SEED, terrain, speed: SPEED });
+  p.world.los = false;
+  p.advance(10);
+  const other = R.createState(3, p.drone.state.fleet, { hubId: 1, cols: COLS, rows: ROWS });
+  other.hops = 1;
+  p.receive({ id: 3, tick: 10, x: p.drone.x + 5, y: p.drone.y, snapshot: R.snapshot(other) });
+  p.advance(11);
+  p.advance(12);
+  assert.equal(p.heardCount, 1, 'still heard on the next tick');
+  assert.equal(p.drone.state.hops, 2, 'and the route stays');
+  p.advance(30);
+  assert.equal(p.heardCount, 0, 'until it is out of date');
+});
+
+test('base is not counted as a drone heard', () => {
+  const terrain = makeTerrain(SEED, W, H, BASE);
+  const p = createPhoneDrone({ id: 2, seed: SEED, terrain, speed: SPEED });
+  p.world.los = false;
+  p.advance(1);
+  const b = R.createState(R.BASE_ID, p.drone.state.fleet, { hubId: 1, cols: COLS, rows: ROWS });
+  p.receive({ id: R.BASE_ID, isBase: true, tick: 1, x: p.drone.x, y: p.drone.y, snapshot: R.snapshot(b) });
+  p.advance(2);
+  assert.deepEqual([p.heardCount, p.heardDrones], [1, 0]);
+});
+
+test('a reloaded page carries on where the drone was', () => {
+  const t = setup();
+  t.run(seconds(45));
+  const saved = JSON.parse(JSON.stringify(t.core.save()));
+  const terrain = makeTerrain(SEED, W, H, BASE);
+  const again = createPhoneDrone({ id: PHONE, seed: SEED, terrain, speed: SPEED });
+  again.restore(saved);
+  assert.deepEqual([again.drone.x, again.drone.y, again.world.tick, again.firstLook], [t.phone.x, t.phone.y, t.sim.tick, t.core.firstLook]);
+  assert.equal(R.visitedCount(again.drone.state), R.visitedCount(t.phone.state));
+  assert.equal(R.visitedCount(again.own), R.visitedCount(t.core.own));
+  const message = again.advance(t.sim.tick + 1);
+  assert.ok(Math.hypot(message.x - t.phone.x, message.y - t.phone.y) < 5, 'and flies on from there');
+});
+
+test('a reloaded phone does not read as a hub takeover', () => {
+  const terrain = makeTerrain(SEED, W, H, BASE);
+  const logs = [];
+  const sim = createSim({ seed: SEED, terrain, speed: SPEED, remoteIds: [1], onLog: (m) => logs.push(m) });
+  sim.drones[0].state.hub = { id: 7, epoch: 3 };
+  sim.applyRemote({ id: 1, tick: 5, x: 1, y: 1, angle: 0, task: 't', hubStatus: 'ok', mode: 'hub', snapshot: { ...R.snapshot(sim.drones[0].state), hub: { id: 1, epoch: 0 } } });
+  assert.equal(logs.filter((l) => l.includes('took over')).length, 0);
+});
+
+test('a drone heard directly is not moved by the big screen\'s older word', () => {
+  const terrain = makeTerrain(SEED, W, H, BASE);
+  const p = createPhoneDrone({ id: 2, seed: SEED, terrain, speed: SPEED });
+  p.advance(10);
+  p.receive({ id: 3, tick: 10, x: 300, y: 300, snapshot: {} });
+  p.setPositions([{ id: 3, x: 100, y: 100, alive: true, inContact: false }, { id: 4, x: 50, y: 50, alive: true, inContact: true }]);
+  assert.deepEqual([p.others.get(3).x, p.others.get(3).inContact, p.others.get(4).x], [300, true, 50]);
 });
 
 test('a device that slept does not pretend it flew', () => {

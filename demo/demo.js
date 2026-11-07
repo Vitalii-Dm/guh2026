@@ -5,7 +5,7 @@ import { NCA } from '../recovery/nca-runtime.js';
 import { makeTerrain } from './terrain.js';
 import { createMessages } from './messages.js';
 import { W, H, CELL, COLS, ROWS, N_DRONES, N_SURVIVORS, SENSE, BASE, DT, TICK_STEPS, createSim } from './sim.js';
-import { PHONE_SPEED } from './mission.js';
+import { NOT_CONNECTED, PHONE_SPEED } from './mission.js';
 import { createPhoneLink } from './phone-link.js';
 
 const msgs = createMessages();
@@ -21,7 +21,10 @@ const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const phoneMode = params.has('phones');   // ?phones=1: some drones fly on phones
 if (phoneMode) $('drones').value = Number(params.get('drones')) || N_DRONES;
+const PHONE_STEP_MS = 250;                // a timer as well as frames, as a hidden tab gets no frames
 const MAX_STEPS_PER_FRAME = 3000;         // catching up after the tab was hidden
+const unreachable = (d) => d.remote && !d.inContact;   // flown by a phone this screen can't hear
+const calm = matchMedia('(prefers-reduced-motion: reduce)');
 // Let the map fill the window below the toolbar, however many rows it wraps to.
 new ResizeObserver(([e]) => document.documentElement.style.setProperty('--bar', `${e.target.offsetHeight}px`)).observe(document.querySelector('header'));
 
@@ -61,6 +64,7 @@ function reset() {
   select(null);
   log(`${phoneMode ? 'Swarm ready' : 'Swarm launched'} over terrain #${terrainSeed}: ${drones} drones, drone 1 is the hub, ${N_SURVIVORS} missing people`);
   msgs.clear();
+  carried = null;
   if (nca) nca.reset();
   ncaWatch = null;
   ncaOwners = null;
@@ -78,7 +82,8 @@ function log(msg, key) {
 // ---------------------------------------------------------------- input
 function fail(d) {
   if (!d || !d.alive) return;
-  if (d.remote) { log(`Drone ${d.id} is flown by a phone: fail it from there, with aeroplane mode`); return; }
+  if (phoneMode && !world.steps) { log('The swarm has not launched yet.'); return; }
+  if (d.remote) { log(`Drone ${d.id} is flown by a phone, so this screen can't fail it. Aeroplane mode on the phone cuts its connection, but the drone keeps flying.`); return; }
   const wasHub = world.currentHub() === d.id;
   const slot = world.fail(d, performance.now());
   if (d === selected) select(null);
@@ -145,17 +150,23 @@ $('failHub').onclick = () => {
 $('failRandom').onclick = () => { const live = world.drones.filter((d) => d.alive && !d.remote); fail(live[Math.floor(Math.random() * live.length)]); };
 $('paint').onclick = () => setPainting(!painting);
 $('clearBlackout').onclick = () => { world.clearBlackout(); marks.push({ tick: world.tick, label: 'blackout lifted' }); };
-$('cutRadio').onclick = () => {
-  world.radio = !world.radio;
+function showRadioButton() {
   $('cutRadio').classList.toggle('on', !world.radio);
   $('cutRadio').textContent = world.radio ? 'Cut all radio' : 'Restore radio';
+}
+$('cutRadio').onclick = () => {
+  world.radio = !world.radio;
+  showRadioButton();
   marks.push({ tick: world.tick, label: world.radio ? 'radio back' : 'radio cut' });
 };
 // A phone-mode run can't restart in place: the phones have to join a new mission.
-$('reset').onclick = phoneMode ? () => location.reload() : reset;
+$('reset').onclick = phoneMode ? () => restartPhones() : reset;
 // Every device must agree on the swarm's size, so in phone mode a change starts a new mission.
-const restartPhones = () => { location.search = `?phones=1&seed=${terrainSeed}&drones=${$('drones').value}`; };
-if (phoneMode) $('drones').onchange = restartPhones; else $('drones').oninput = reset;
+const restartPhones = () => { location.search = `?phones=1&seed=${terrainSeed}&drones=${$('drones').value}&restart=1`; };
+if (phoneMode) {
+  $('drones').oninput = (e) => { $('dronesV').textContent = e.target.value; };
+  $('drones').onchange = restartPhones;
+} else $('drones').oninput = reset;
 $('newTerrain').onclick = () => {
   terrainSeed = Math.floor(Math.random() * 1e6);
   if (phoneMode) restartPhones(); else reset();
@@ -259,6 +270,27 @@ function drawDrone(d, color) {
   ctx.restore();
 }
 
+/** A pulsing yellow halo and tag, so a drone with no connection stands out from anywhere in the room. */
+function drawNotConnected(d, now, tagged) {
+  const pulse = calm.matches ? 0.5 : (Math.sin(now / 220) + 1) / 2;
+  ctx.save();
+  ctx.fillStyle = NOT_CONNECTED;
+  ctx.globalAlpha = 0.28 + pulse * 0.17;
+  ctx.beginPath(); ctx.arc(d.x, d.y, SENSE + 12, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = NOT_CONNECTED; ctx.lineWidth = 3.5;
+  ctx.beginPath(); ctx.arc(d.x, d.y, SENSE + 7 + pulse * 5, 0, Math.PI * 2); ctx.stroke();
+  if (!tagged) { ctx.restore(); return; }
+  const text = `${d.id} NOT CONNECTED`;
+  ctx.font = '800 11px system-ui'; ctx.textAlign = 'center';
+  // Kept on the map, as phones fly the strips at its edge.
+  const w = ctx.measureText(text).width + 12;
+  const x = Math.max(w / 2 + 2, Math.min(W - w / 2 - 2, d.x)), y = Math.max(2, d.y - SENSE - 32);
+  ctx.fillRect(x - w / 2, y, w, 17);
+  ctx.fillStyle = '#17140a'; ctx.fillText(text, x, y + 12.5);
+  ctx.restore();
+}
+
 function drawPerson(x, y, color, pose) {
   ctx.save(); ctx.translate(x, y);
   ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 2; ctx.lineCap = 'round';
@@ -359,18 +391,24 @@ function draw() {
   for (const d of live) {
     const n = R.liveIds(d.state).length;
     ctx.globalAlpha = selected && d !== selected ? 0.3 : 1;
-    if (d.remote && !d.inContact) ctx.globalAlpha = 0.45;
+    const waiting = d.phone && !link?.connected().includes(d.id);   // before launch, only the panel names them: they sit too close for tags
+    if (unreachable(d) || waiting) drawNotConnected(d, now, !waiting);
     drawDrone(d, hue(ranks(d), n));
-    if (d.remote) {
-      ctx.globalAlpha = 1;
-      ctx.strokeStyle = d.inContact ? '#ffffff' : '#e5534b'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
+    if ((d.remote || d.phone) && !unreachable(d) && !waiting) {
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
       ctx.beginPath(); ctx.arc(d.x, d.y, SENSE + 5, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
-      ctx.fillStyle = d.inContact ? '#ffffff' : '#ff8c82'; ctx.font = '700 10px system-ui';
-      ctx.fillText(d.inContact ? 'PHONE' : 'PHONE: NO CONTACT', d.x, d.y - 26);
+      ctx.fillStyle = '#ffffff'; ctx.font = '700 10px system-ui'; ctx.fillText('PHONE', d.x, d.y - 33);
     }
     if (d === selected) {
       ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5;
       ctx.beginPath(); ctx.arc(d.x, d.y, SENSE + 5, 0, Math.PI * 2); ctx.stroke();
+    }
+    if (unreachable(d)) {
+      const text = `${d.id}: last seen here`;
+      ctx.fillStyle = 'rgba(240,245,250,0.9)'; ctx.font = '600 10px system-ui';
+      const half = ctx.measureText(text).width / 2 + 2;
+      ctx.fillText(text, Math.max(half, Math.min(W - half, d.x)), Math.min(H - 4, d.y + 30));
+      continue;
     }
     if (R.isHub(d.state)) {
       ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 2.5;
@@ -397,14 +435,18 @@ function updateDronePanel() {
   const d = selected, s = d.state;
   const found = world.survivors.filter((p) => p.foundBy).length;
   const reports = Object.entries(s.survivors);
+  // Phone mode: this screen only knows what it has been told, and for a drone
+  // it can't reach, all of this is from the last message.
+  const truth = phoneMode ? 'this screen has' : 'really';
   const facts = [
+    ...(unreachable(d) ? [['Connection', 'not connected. All of this is from its last message.']] : []),
     ['Doing', d.task],
-    ['Radio', MODE_TEXT[d.commsMode]],
-    ['Route to base', s.hops === null ? 'none' : `${s.hops} hops`],
-    ['Map it knows', `${Math.round((R.visitedCount(s) / (COLS * ROWS)) * 100)}% searched (really ${Math.round(world.coverage() * 100)}%)`],
-    ['Thinks alive', `${R.liveIds(s).length} drones (really ${world.drones.filter((x) => x.alive).length})`],
+    ['Radio', unreachable(d) ? 'unknown' : MODE_TEXT[d.commsMode]],
+    ['Route to base', unreachable(d) ? 'unknown' : s.hops === null ? 'none' : `${s.hops} hops`],
+    ['Map it knows', `${Math.round((R.visitedCount(s) / (COLS * ROWS)) * 100)}% searched (${truth} ${Math.round(world.coverage() * 100)}%)`],
+    ['Thinks alive', `${R.liveIds(s).length} drones (${phoneMode ? 'launched' : 'really'} ${world.drones.filter((x) => x.alive).length})`],
     ['Thinks the hub is', `drone ${s.hub.id}`],
-    ['People it knows of', `${reports.length} (really ${found} found)`],
+    ['People it knows of', `${reports.length} (${truth} ${found} found)`],
   ];
   $('droneTitle').textContent = `Drone ${d.id}`;
   $('droneFacts').innerHTML = facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
@@ -414,7 +456,7 @@ function updateDronePanel() {
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
     const i = r * COLS + c;
     if (!R.isVisited(s, c, r)) continue;
-    if (d.own[i]) ownN++; else from.set(world.searchedBy[i], (from.get(world.searchedBy[i]) || 0) + 1);
+    if (d.own[i]) ownN++; else if (world.searchedBy[i]) from.set(world.searchedBy[i], (from.get(world.searchedBy[i]) || 0) + 1);
   }
   const pct = (n) => `${Math.round((n / total) * 100)}%`;
   const sw = (id, solid) => { const [r, g, b] = droneRgb(id); return `<i class="sw" style="background:rgba(${r | 0},${g | 0},${b | 0},${solid ? 1 : 0.45})"></i>`; };
@@ -470,7 +512,7 @@ function updateStats() {
   const hubDrone = world.drones.find((d) => d.id === hub);
   const epoch = hubDrone ? hubDrone.state.hub.epoch : live[0]?.state.hub.epoch;
   const waiting = live.filter((d) => d.hubStatus === 'suspect' && !R.isHub(d.state)).length;
-  $('hubline').innerHTML = !live.length ? '<span class="suspect">No drones left</span>' : hubDrone && hubDrone.alive
+  $('hubline').innerHTML = !live.length ? '<span class="suspect">No drones left</span>' : hub === null ? '<span class="suspect">This screen is in contact with no drone.</span>' : hubDrone && hubDrone.alive
     ? `Hub is <b>drone ${hub}</b>, epoch ${epoch}.` + (waiting ? ` <span class="suspect">${waiting} drones can't hear it.</span>` : '')
     : `<span class="suspect">Hub ${hub} is silent and ${waiting} of ${live.length} drones have noticed. The search goes on; a drone that can hear others takes over after about ${Math.round(R.DEFAULTS.hubTimeout * SECONDS_PER_TICK)} s.</span>`;
 }
@@ -705,12 +747,14 @@ const onScreenNow = new Map();
 const io = new IntersectionObserver((es) => { for (const e of es) onScreenNow.set(e.target.id, e.isIntersecting); });
 for (const id of ['nca', 'graph']) io.observe($(id));
 const onScreen = (id) => onScreenNow.get(id) !== false;
+let carried = null;              // phone mode: what nodes knew at the end of the last tick
 let frame = 0, lastFrame = 0, owed = 0, lastRender = -Infinity, lastPanel = -Infinity, graphDirty = true, panelDirty = true;
 function stepOnce(refsDone) {
   const before = world.tick;
   const radioTick = world.steps % TICK_STEPS === 0;
   const nodes = radioTick && [world.base, ...world.drones.filter((d) => d.alive)];
-  const pre = radioTick && msgs.before(nodes);
+  // A phone's news arrives between ticks, so phone mode compares with the last tick's end.
+  const pre = radioTick && (carried ?? msgs.before(nodes));
   world.step();
   if (!refsDone) { reference.on.step(); reference.off.step(); }
   if (world.tick !== before) {
@@ -718,14 +762,18 @@ function stepOnce(refsDone) {
     panelDirty = true;
     if (world.tick % SAMPLE_TICKS === 0) { sample(); graphDirty = true; }
     link?.sendTick();
+    if (phoneMode) carried = msgs.before([world.base, ...world.drones.filter((d) => d.alive)]);
   }
+}
+/** Phone mode: every device works out the tick from the launch time, so they stay together. */
+function catchUp() {
+  const target = link.targetSteps();
+  for (let n = 0; target !== null && world.steps < target && n < MAX_STEPS_PER_FRAME; n++) stepOnce(true);
 }
 function loop(t) {
   requestAnimationFrame(loop);
   if (phoneMode) {
-    // Every device works out the tick from the launch time, so they stay together.
-    const target = link.targetSteps();
-    for (let n = 0; target !== null && world.steps < target && n < MAX_STEPS_PER_FRAME; n++) stepOnce(true);
+    catchUp();
   } else {
     owed += Math.min(0.1, (t - (lastFrame || t)) / 1000) * simSpeed; lastFrame = t;
     // the comparison runs only feed the graph; once they've searched everything they stop
@@ -757,33 +805,71 @@ function updatePhones(mission, connected) {
   const url = mission?.joinUrl;
   if (url && $('joinUrl').textContent !== url) {
     $('joinUrl').textContent = url; $('joinUrl').href = url;
-    $('qr').src = '/qr.svg'; $('qr').hidden = false;
+    $('qr').src = '/qr.svg';
   }
   const claimed = mission?.drones ?? [];
-  $('phoneList').textContent = claimed.length
-    ? claimed.map((d) => `Drone ${d}: ${connected.includes(d) ? 'linked' : 'not linked'}`).join(' · ')
-    : 'No phones have joined yet';
   const launched = mission?.launchAt != null;
-  $('launch').disabled = launched || !mission;
-  $('launch').textContent = launched ? 'Launched' : `Launch with ${claimed.length} ${claimed.length === 1 ? 'phone' : 'phones'}`;
+  for (const d of world.drones) d.phone = !launched && claimed.includes(d.id);
+  $('joinBox').hidden = launched;      // the swarm is closed once it has launched
+  $('phoneList').innerHTML = claimed.length
+    ? claimed.map((d) => (connected.includes(d) ? `Drone ${d}: connected` : `<span class="not-connected">Drone ${d}: not connected</span>`)).join('<br>')
+    : 'No phones have joined yet';
+  $('launch').hidden = launched;
+  $('launch').disabled = !claimed.length;
+  $('launch').textContent = claimed.length ? `Launch with ${claimed.length} ${claimed.length === 1 ? 'phone' : 'phones'}` : 'Waiting for phones';
+}
+
+/** This page was reloaded or reopened during a run: it replays to the present and rejoins. */
+function resumePhones(mission) {
+  terrainSeed = mission.seed;
+  $('drones').value = mission.fleet;
+  reset();
+  link.attach(world);
+  log('<b>This screen rejoined the flying run.</b> It replays the laptop drones, then the phones catch it up.');
+}
+
+function stoppedPhones(why) {
+  $('phonesCard').hidden = false;
+  $('joinBox').hidden = true;
+  $('launch').hidden = why !== 'busy';
+  $('launch').disabled = false;
+  $('launch').textContent = 'Start a new run here';
+  $('launch').onclick = restartPhones;
+  $('phoneList').textContent = {
+    busy: 'Another big screen is running this mission.',
+    replaced: 'Another big screen took over. Close this tab.',
+    failed: 'Start this page with npm run phones, and open it at localhost on the laptop.',
+  }[why];
 }
 
 if (phoneMode) {
   $('speed').disabled = true;     // every device runs on the same clock
-  link = createPhoneLink({
-    seed: terrainSeed,
-    fleet: +$('drones').value,
-    onUpdate: updatePhones,
-    onError: () => { $('phonesCard').hidden = false; $('phoneList').textContent = 'Start this page with: npm run phones'; },
-  });
+  const restart = params.has('restart');
+  if (restart) {
+    params.delete('restart');   // so a plain reload after this rejoins the run. `window`: this file has its own `history`
+    window.history.replaceState(null, '', `${location.pathname}?${params}`);
+  }
+  document.body.classList.add('phones');
+  link = createPhoneLink({ seed: terrainSeed, fleet: +$('drones').value, restart, onUpdate: updatePhones, onStopped: stoppedPhones, onResume: resumePhones });
   $('launch').onclick = async () => {
     $('launch').disabled = true;
-    await link.launch();
+    // Anything the presenter set up before launch carries over.
+    const blackout = world.blackout.slice(), { radio } = world;
+    try {
+      await link.launch();
+    } catch (e) {
+      if (e.message !== 'replaced') $('phoneList').textContent = 'The helper refused the launch. Reload this page.';
+      return;
+    }
     reset();
+    world.blackout.set(blackout);
+    world.radio = radio;
+    showRadioButton();
     link.attach(world);
     const n = link.claimed().length;
     log(`Launching with ${n} ${n === 1 ? 'phone' : 'phones'}`);
   };
+  setInterval(catchUp, PHONE_STEP_MS);
 }
 reset();
 requestAnimationFrame(loop);

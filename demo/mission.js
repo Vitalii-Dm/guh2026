@@ -8,6 +8,7 @@ export const PHONE_SPEED = 10;          // px/s: a search of about 2.5 minutes
 export const LAUNCH_DELAY_MS = 3000;    // time for every device to hear the launch time
 export const TICK_MS = DT * TICK_STEPS * 1000;
 export const LAPTOP_ID = 'base';        // sorts below 'drone-…', so the laptop makes the offers
+export const NOT_CONNECTED = '#ffd400'; // one colour for this on the big screen and the phones
 
 export const netId = (drone) => `drone-${drone}`;
 export const droneOf = (id) => (id.startsWith('drone-') ? Number(id.slice(6)) : null);
