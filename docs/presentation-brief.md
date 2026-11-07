@@ -2,7 +2,11 @@
 
 Branch: `presentation-website`. Folder: `site/`. Open http://localhost:8080/site/ (serve the repo root).
 
-## Revision 2 (current)
+## Revision 3 (current)
+
+Two-minute pitch, so the story is tighter: the timeline is three beats (the collapse with the Gyirong Port footage; the silent valley with the satellite wipe; the toll). The 3D scene takes about 3.8 screens of scroll instead of 6.4, the trekker is modelled and waving on a rocky bank, drone A lights them with a searchlight, and a "Drone A · camera" inset shows the find with a tracking box. Captions now explain line of sight and the relay in plain words. A fifth section, "Not just Nepal", has four looping tiles for Q&A: defence (routing around jamming), drone shows (formation heals), sport (relay chain over a Tour de France col instead of relay aircraft), blackouts (the 72-hour preparedness advice from the EU, UK and France).
+
+## Revision 2
 
 The first part of the pitch is short, so the page has four screens and nothing else:
 

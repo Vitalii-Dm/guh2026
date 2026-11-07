@@ -160,21 +160,53 @@ function makeDrone() {
 }
 
 function makePerson() {
+  // A trekker in a high-vis shell with a pack, both arms up and waving: shoulder pivots so the arms swing from the shoulder.
   const g = new THREE.Group();
-  const jacket = new THREE.MeshStandardMaterial({ color: 0xd8471f, roughness: 0.75 });
-  const pants = new THREE.MeshStandardMaterial({ color: 0x2b2f36, roughness: 0.9 });
-  const skin = new THREE.MeshStandardMaterial({ color: 0xc89478, roughness: 0.8 });
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 0.65, 4, 10), jacket); torso.position.y = 1.35; g.add(torso);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 14, 10), skin); head.position.y = 2.05; g.add(head);
-  const pack = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.65, 0.32), pants); pack.position.set(0, 1.4, -0.32); g.add(pack);
-  for (const s of [-1, 1]) {
-    const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, 0.75, 4, 8), pants); leg.position.set(s * 0.16, 0.5, 0); g.add(leg);
+  const jacket = new THREE.MeshStandardMaterial({ color: 0xff5a1f, roughness: 0.6, emissive: 0x2a0800 });
+  const pants = new THREE.MeshStandardMaterial({ color: 0x23272e, roughness: 0.9 });
+  const skin = new THREE.MeshStandardMaterial({ color: 0xc28a6c, roughness: 0.8 });
+  const packMat = new THREE.MeshStandardMaterial({ color: 0x2f4a6b, roughness: 0.85 });
+  const hatMat = new THREE.MeshStandardMaterial({ color: 0x1b2430, roughness: 0.9 });
+  const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); g.add(m); return m; };
+  add(new THREE.CapsuleGeometry(0.34, 0.62, 6, 12), jacket, 0, 1.38, 0).scale.set(1, 1, 0.78);
+  add(new THREE.SphereGeometry(0.23, 16, 12), skin, 0, 2.06, 0.02);
+  add(new THREE.SphereGeometry(0.245, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), hatMat, 0, 2.1, 0);
+  add(new THREE.BoxGeometry(0.52, 0.72, 0.34), packMat, 0, 1.42, -0.34);
+  add(new THREE.CapsuleGeometry(0.15, 0.24, 4, 8), packMat, 0, 1.86, -0.34).rotation.z = Math.PI / 2;
+  for (const sx of [-1, 1]) {
+    const leg = add(new THREE.CapsuleGeometry(0.135, 0.72, 4, 8), pants, sx * 0.16, 0.5, 0); leg.rotation.z = sx * 0.06;
+    add(new THREE.BoxGeometry(0.2, 0.14, 0.34), hatMat, sx * 0.18, 0.07, 0.05);
   }
-  const armL = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.6, 4, 8), jacket); armL.position.set(-0.42, 1.45, 0); armL.rotation.z = 0.25; g.add(armL);
-  const armR = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.6, 4, 8), jacket); armR.position.set(0.5, 1.95, 0); armR.rotation.z = -2.6; g.add(armR);
+  const arms = [];
+  for (const sx of [-1, 1]) {
+    const shoulder = new THREE.Group(); shoulder.position.set(sx * 0.4, 1.74, 0); g.add(shoulder);
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.62, 4, 8), jacket); arm.position.y = 0.4; shoulder.add(arm);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), skin); hand.position.y = 0.8; shoulder.add(hand);
+    shoulder.userData.side = sx; arms.push(shoulder);
+  }
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-  g.scale.setScalar(1.6);
-  g.userData = { armR };
+  g.scale.setScalar(2.3);
+  g.userData = { arms };
+  return g;
+}
+
+// Boulders for the bank the person is stranded on.
+function makeRocks(rng) {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: 0x5f5952, roughness: 0.95, flatShading: true });
+  for (let i = 0; i < 9; i++) {
+    const geo = new THREE.IcosahedronGeometry(1, 1);
+    const p = geo.attributes.position;
+    for (let k = 0; k < p.count; k++) { const f = 0.75 + hash(i * 7 + k, 3) * 0.5; p.setXYZ(k, p.getX(k) * f, p.getY(k) * f * 0.7, p.getZ(k) * f); }
+    geo.computeVertexNormals();
+    const m = new THREE.Mesh(geo, mat);
+    const a = (i / 9) * Math.PI * 2 + hash(i, 9), r = 3.2 + hash(i, 4) * 3.5;
+    m.position.set(Math.cos(a) * r, -0.3, Math.sin(a) * r);
+    m.scale.setScalar(0.9 + hash(i, 5) * 1.6);
+    m.rotation.set(hash(i, 6) * 3, hash(i, 7) * 3, 0);
+    m.castShadow = m.receiveShadow = true;
+    g.add(m);
+  }
   return g;
 }
 
@@ -276,11 +308,15 @@ export function createScene(canvas, hud) {
   // actors
   PERSON.y = height(PERSON.x, PERSON.z);
   BASE.y = height(BASE.x, BASE.z);
-  const person = makePerson(); person.position.copy(PERSON); person.rotation.y = 0.9; scene.add(person);
+  const person = makePerson(); person.position.copy(PERSON); person.rotation.y = 0.5; scene.add(person);
+  const rocks = makeRocks(); rocks.position.copy(PERSON); scene.add(rocks);
   const base = makeBase(); base.position.copy(BASE); base.rotation.y = -0.4; scene.add(base);
   base.updateMatrixWorld(true);
   const MAST = base.userData.top.clone().applyMatrix4(base.matrixWorld);
   const droneA = makeDrone(), droneB = makeDrone();
+  // drone A's searchlight, aimed at the person while it scans
+  const searchlight = new THREE.SpotLight(0xe8f4ff, 0, 90, 0.28, 0.7, 1.3);
+  searchlight.target.position.copy(PERSON); scene.add(searchlight, searchlight.target);
   scene.add(droneA, droneB);
 
   // SOS beacon: rings that expand from the person
@@ -362,6 +398,9 @@ export function createScene(canvas, hud) {
     if (vis) el.style.transform = `translate(${((v.x * 0.5 + 0.5) * w).toFixed(1)}px, ${((-v.y * 0.5 + 0.5) * h).toFixed(1)}px) translate(-50%, calc(-100% - 26px))`;
   }
 
+  const droneCam = new THREE.PerspectiveCamera(16, 1.6, 0.5, 900);
+  const camEl = document.getElementById('cam'), camBox = document.getElementById('camBox');
+
   // post-processing: a little bloom so lights and links glow
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
@@ -421,7 +460,11 @@ export function createScene(canvas, hud) {
     const pulse = (now * 0.8) % 1;
     beaconMat.opacity = found ? 0.55 + 0.45 * Math.sin(now * 6) ** 2 : 0;
     ring.scale.setScalar(1 + pulse * 14); ringMat.opacity = found ? (1 - pulse) * 0.7 : 0;
-    person.userData.armR.rotation.z = -2.6 + Math.sin(now * 5) * 0.35;
+    const wave = found ? 1 : 0.35;
+    // arms raised above the head, swinging side to side: the universal 'here' signal
+    person.userData.arms.forEach((sh) => { sh.rotation.z = -sh.userData.side * (0.5 + Math.sin(now * 6 + (sh.userData.side > 0 ? 0 : Math.PI)) * 0.38 * wave); });
+    searchlight.position.copy(droneA.position).add(new THREE.Vector3(0, -1.5, 0));
+    searchlight.intensity = span(t, 0.22, 0.27) * (1 - span(t, 0.44, 0.5)) * 900;
 
     // blocked attempt: A → mast hits the ridge
     const hit = firstHit(A_HOVER, MAST) || A_HOVER.clone().lerp(MAST, 0.5);
@@ -469,6 +512,33 @@ export function createScene(canvas, hud) {
     pin(tags.hit, hit, sp);
 
     composer.render();
+
+    // drone A's own camera, in an inset, while it finds the person
+    const camOn = t > 0.255 && t < 0.42;
+    camEl.classList.toggle('on', camOn);
+    camEl.classList.toggle('saved', t > 0.31);
+    if (camOn) {
+      const r = camEl.getBoundingClientRect(), cr = canvas.getBoundingClientRect();
+      const w = r.width, h = r.height, x = r.left - cr.left, y = cr.bottom - r.bottom;
+      droneCam.aspect = w / h; droneCam.updateProjectionMatrix();
+      droneCam.position.copy(droneA.position).add(new THREE.Vector3(0, -1.6, 0));
+      droneCam.lookAt(PERSON.x, PERSON.y + 2.4, PERSON.z);
+      renderer.setScissorTest(true);
+      renderer.setViewport(x, y, w, h); renderer.setScissor(x, y, w, h);
+      droneA.visible = false; cone.visible = false;
+      renderer.render(scene, droneCam);
+      droneA.visible = true; cone.visible = true;
+      renderer.setScissorTest(false);
+      renderer.setViewport(0, 0, cr.width, cr.height);
+      // tracking box around the person, in inset pixels
+      const top = new THREE.Vector3(PERSON.x, PERSON.y + 5.6, PERSON.z).project(droneCam);
+      const bot = new THREE.Vector3(PERSON.x, PERSON.y - 0.2, PERSON.z).project(droneCam);
+      const bh = Math.abs(top.y - bot.y) * 0.5 * h, bw = bh * 0.62;
+      const cx = (top.x * 0.5 + 0.5) * w, cy = (-((top.y + bot.y) / 2) * 0.5 + 0.5) * h;
+      camBox.style.width = `${bw.toFixed(0)}px`; camBox.style.height = `${bh.toFixed(0)}px`;
+      camBox.style.left = `${(cx - bw / 2).toFixed(0)}px`; camBox.style.top = `${(cy - bh / 2).toFixed(0)}px`;
+      camBox.style.opacity = t > 0.285 ? 1 : 0;
+    }
   }
   requestAnimationFrame(frame);
 

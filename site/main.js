@@ -44,9 +44,9 @@ function timeline() {
   });
   show(best);
   // satellite wipe follows the scroll through its beat
-  const sat = beats[2].getBoundingClientRect();
-  const k = clamp((mid - sat.top) / (sat.height * 0.85));
-  frames[2].style.setProperty('--wipe', `${(100 - k * 100).toFixed(2)}%`);
+  const sat = beats[1].getBoundingClientRect();
+  const k = clamp((mid - sat.top) / (sat.height * 0.7));
+  frames[1].style.setProperty('--wipe', `${(100 - k * 100).toFixed(2)}%`);
 }
 
 let counted = false;
